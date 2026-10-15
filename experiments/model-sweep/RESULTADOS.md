@@ -92,3 +92,80 @@ gcc -O2 -std=c99 -o sweep_eval sweep_eval.c -lm
 taskset -c 0 ./sweep_eval sweep/<cfg>/tables.bin <rows.bin> 16 3000
 python plot_sweep.py
 ```
+
+---
+
+# Ablação de features (modelo r50_d4)
+
+Três perguntas numa execução: a tese 12→16 sobrevive ao modelo encolhido? Dá para remover feature
+agora que a extração domina? E `r50_d4` contra `r25_d8` é sinal ou ruído?
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig-ablacao-dark.png">
+  <img src="figs/fig-ablacao-light.png" alt="Mapa de calor de F1 por classe para cada subconjunto de features; remover a source diversity derruba fuzzy de 0,997 para 0,544 e mitm-multi de 0,863 para 0,575">
+</picture>
+
+| subconjunto | nf | macro | extração | normal | dos | fuzzy | mitm-single | mitm-multi |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **all16** | 16 | **0,9695** | 21,91 µs | 0,9946 | 0,9982 | 0,9968 | 0,9952 | 0,8630 |
+| sem time/length | 13 | 0,8933 | 21,31 µs | 0,9928 | **0,7905** | 0,9917 | 0,9072 | 0,7841 |
+| sem source diversity | 15 | 0,7880 | 12,77 µs | 0,9746 | 0,8843 | **0,5440** | 0,9627 | **0,5746** |
+| base12 + repetição | 13 | 0,7848 | 12,66 µs | 0,9742 | 0,8850 | **0,5433** | 0,9493 | 0,5724 |
+| base12 | 12 | 0,7853 | 12,11 µs | 0,9743 | 0,8851 | 0,5433 | 0,9486 | 0,5752 |
+| lean | 12 | 0,6410 | 12,18 µs | 0,9743 | **0,3640** | 0,5374 | 0,7555 | 0,5736 |
+
+## 1. A tese da C1 sobrevive, e fica mais forte
+
+Com o modelo encolhido o contraste **aumenta**: 0,7853 com 12 features contra **0,9695** com 16,
+ante 0,779 → 0,964 do artigo. A MITM-multi vai de 0,5752 para 0,8630.
+
+Trocar o modelo não enfraquece a história das features; melhora os dois lados.
+
+## 2. Nenhuma feature é removível
+
+Toda remoção testada custa caro:
+
+- tirar `source diversity` leva o macro de 0,9695 para **0,7880**, praticamente o nível do baseline;
+- tirar `time interval` e `length changes`, as de menor ganho, derruba o **DoS** de 0,9982 para
+  0,7905, e para 0,3640 quando combinada com a remoção anterior.
+
+As features de ganho baixo carregam o DoS. Ganho baixo não significa dispensável.
+
+## 3. Duas afirmações do artigo são contrariadas pela medição
+
+**(a) O artigo atribui a separação do Fuzzy à feature errada.** A Seção VI-B diz que o Fuzzy passa a
+ser separado pela *Payload repetition*. A ablação mostra o contrário: o subconjunto
+`base12 + repetição`, que **tem** essa feature, dá Fuzzy **0,5433**, idêntico ao baseline sem ela.
+Quem separa o Fuzzy é a **`source diversity`**: sem ela o Fuzzy cai para 0,5440 mesmo com as outras
+três propostas presentes.
+
+Faz sentido fisicamente: o Fuzzy emite conteúdo aleatório, logo a diversidade de *payloads* por
+origem vai a ~1,0, enquanto tráfego normal repete. A feature mede exatamente o que define o ataque.
+
+**(b) O artigo chama a `source diversity` de "de baixa importância".** Ela tem o menor ganho entre as
+features de conteúdo (285), mas a ablação mostra que é a **mais crítica do conjunto**: sozinha
+sustenta Fuzzy **e** MITM-multi.
+
+É a terceira vez neste experimento que o ganho agregado engana. Ele soma sobre 5 classes, então uma
+feature decisiva para duas classes minoritárias aparece com ganho baixo.
+
+## 4. Consequência: consertar o custo, não remover a feature
+
+A feature mais cara (9,13 µs, 42% da extração) é também a mais importante. Não há o que podar.
+
+O caminho é o **contador incremental O(1)** já identificado: a `source diversity` recomputa um
+conjunto sobre janela de 1000 *payloads* a cada pacote. Mantendo o mesmo valor numérico, o custo cai
+para ~0,5 µs e a extração vai de 21,9 para ~13,3 µs.
+
+Com o modelo `r50_d4` (2,83 µs de inferência), o custo por pacote sairia de ~24,7 µs para **~16 µs**,
+sem perder nenhuma classe.
+
+## 5. Profundidade 4 confirmada, mas a repetição de semente não mediu nada
+
+`r50_d4` (0,9695) segue à frente de `r25_d8` (0,9689), com 3,4x menos nós.
+
+Porém as três sementes deram resultados **idênticos**: sem `subsample` nem `colsample`, e com
+`tree_method=hist`, o treino é determinístico e a semente não varia nada. **A repetição de semente
+foi instrumento errado.** Para avaliar robustez seria preciso variar o **split** (janelas temporais
+distintas), não a semente. A diferença de 0,0006 entre as duas configurações continua sem suporte
+estatístico; a decisão por profundidade 4 se apoia em tamanho, WCET e estabilidade da coluna.
