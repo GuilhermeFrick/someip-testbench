@@ -65,26 +65,37 @@ variação de taxa, como já previsto no gerador.
 **Objetivo:** fechar o elo que o artigo deixou como trabalho futuro: a classe predita vira um
 Security Event tipado, consumido por um IdsM.
 
-- `ids_sensor` em C++ linkando a **`libxgboost` pela C API** (`XGBoosterLoadModel` mais
-  `XGBoosterPredictFromDense`), com **`nthread=1`** para a medição em 1 núcleo ficar comparável.
-- Extração das 16 features em C++ mais mapeamento da classe para `SecurityEventDefinition`.
+São quatro frentes, em ordem de esforço:
+
+1. **Extrator das 16 features em C++** (o caminho crítico). Tem estado: janelas deslizantes por
+   fluxo e por origem, *byte-models*, Hamming entre *payloads*. Já nascer com a *source diversity*
+   incremental O(1).
+2. **Exportar os dados que o extrator precisa**: tabelas de log-probabilidade dos *byte-models* e os
+   vetores `xmin`/`xmax` da normalização.
+3. **Modelo via TL2cgen**, compilado junto no build do modelo selecionado.
+4. **`libidsm`**: mapear a classe para `SecurityEventDefinition` e reportar.
 - `libidsm`: `EventReporter::ReportEvent(...)` e o IdsM com cadeia de filtros (taxa, agregação, limiar).
 - Reporter: log estruturado e, opcionalmente, um serviço SOME/IP representando o SOC.
 
-**Critério de pronto:** rodar um cenário de ataque e obter um **log de eventos qualificados**
-alinhado temporalmente com a janela do ataque injetado.
+**Critério de pronto:** dois testes de paridade passando, e um cenário de ataque produzindo um
+**log de eventos qualificados** alinhado temporalmente com a janela do ataque injetado.
 
-**Ganho colateral:** chamar o motor nativo direto remove o gargalo de cerca de 0,5 ms por chamada,
-medido na primeira contribuição, que era o custo da fronteira Python. É a mesma implementação
-servindo às duas frentes.
+**Paridade é critério de aceite, em dois níveis:**
 
-**Risco: baixo.** Como é o mesmo motor que treinou o modelo, não há divergência numérica a
-verificar, e o `multi:softprob` de 5 classes é tratado nativamente. Ainda assim, vale confirmar que
-a classe predita em C++ bate com a do `predict_proba` numa amostra do conjunto de teste.
+- *Features*: o mesmo PCAP produz as **mesmas 16 features** em Python e em C++. Esse é o teste que
+  pega os erros sutis (janela que começa cheia, ordem de atualização diferente).
+- *Classe*: a predição em C++ bate com a do `predict_proba`. A `libxgboost` serve de oráculo.
 
-**Fora de escopo nesta fase:** exportar o modelo para C embarcável (tabelas `const` mais avaliador).
-Isso só importa se formos para ECU real; a comparação com a `libxgboost` fica para depois, já com o
-número da bancada em mãos.
+**Ganho colateral:** a inferência nativa remove o gargalo de cerca de 0,5 ms por chamada medido na
+primeira contribuição, que vinha da fronteira Python somada ao caminho de uma linha da
+`libxgboost`.
+
+**Melhoria reservada:** o **avaliador compacto** (modelo como tabelas `const` percorridas por laço
+limitado) já foi medido em **2,2x mais rápido que o TL2cgen**, com paridade exata, 4,5x menos bytes
+e sem recompilar para trocar de modelo. Fica guardado como evolução, com o número já em mãos. Antes
+de promovê-lo é preciso fechar a lacuna dos **valores ausentes**: ele ignora a direção `missing` do
+XGBoost, o que não afetou a paridade porque os dados não têm NaN. Evidência em
+`experiments/bench-inference/RESULTADOS.md`.
 
 ---
 

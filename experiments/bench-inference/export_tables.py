@@ -48,16 +48,13 @@ def flatten(tree: dict, nodes: list) -> int:
     return idx
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True)
-    ap.add_argument("--out", default="build")
-    a = ap.parse_args()
-    os.makedirs(a.out, exist_ok=True)
+def export(model_path: str, outdir: str, quiet: bool = False) -> int:
+    """Exporta o modelo para <outdir>/tables.bin. Devolve o numero de nos."""
+    os.makedirs(outdir, exist_ok=True)
 
     import xgboost as xgb
     bst = xgb.Booster()
-    bst.load_model(a.model)
+    bst.load_model(model_path)
 
     cfg = json.loads(bst.save_config())
     n_class = int(cfg["learner"]["learner_model_param"].get("num_class", 1)) or 1
@@ -78,12 +75,13 @@ def main() -> None:
         roots.append(flatten(json.loads(d), nodes))
 
     n_trees = len(roots)
-    print(f"arvores={n_trees}  classes={n_class}  features={n_feat}  base_score={base}")
-    print(f"nos={len(nodes)}  tabela={len(nodes) * 16 / 1e6:.2f} MB "
-          f"(contra 11,7 MB de objeto do TL2cgen)")
-    print(f"arvores por classe={n_trees // max(n_class, 1)}  (classe = indice % n_class)")
+    if not quiet:
+        print(f"arvores={n_trees}  classes={n_class}  features={n_feat}  base_score={base}")
+        print(f"nos={len(nodes)}  tabela={len(nodes) * 16 / 1e6:.2f} MB "
+              f"(contra 11,7 MB de objeto do TL2cgen)")
+        print(f"arvores por classe={n_trees // max(n_class, 1)}  (classe = indice % n_class)")
 
-    path = os.path.join(a.out, "tables.bin")
+    path = os.path.join(outdir, "tables.bin")
     with open(path, "wb") as f:
         f.write(struct.pack("<4i", n_trees, n_class, len(nodes), n_feat))
         f.write(struct.pack(f"<{n_class}f", *base))
@@ -91,7 +89,17 @@ def main() -> None:
         for thr, feat, left, right in nodes:
             f.write(struct.pack("<f3i", thr, feat, left, right))
 
-    print(f"[ok] {path} ({os.path.getsize(path) / 1e6:.2f} MB)")
+    if not quiet:
+        print(f"[ok] {path} ({os.path.getsize(path) / 1e6:.2f} MB)")
+    return len(nodes)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", required=True)
+    ap.add_argument("--out", default="build")
+    a = ap.parse_args()
+    export(a.model, a.out)
 
 
 if __name__ == "__main__":

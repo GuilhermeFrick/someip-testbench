@@ -249,8 +249,34 @@ someip-testbench/
 | API de serviço | **Fachada `libecu` estilo `ara::com`** sobre vsomeip | Permite usar o vocabulário da spec (Skeleton, Proxy, Event, Field) com dependência mínima e build reprodutível | **CommonAPI C++**: exige toolchain Franca/Java e sua API não é `ara::com` de qualquer forma |
 | Descrição da rede | **YAML próprio** inspirado no ARXML | Legível, versionável e suficiente para gerar config, código e rótulos | ARXML completo: verboso e exigiria ferramental pesado |
 | Camada CARLA | **Python** | API madura e não aparece no barramento capturado | Cliente C++ do CARLA: custo alto, ganho nulo |
-| Inferência do IDS | **`libxgboost` via C API** (`XGBoosterPredictFromDense`) | É o **mesmo motor** que treinou, logo **divergência numérica zero**; trata `multi:softprob` de 5 classes nativamente; remove a fronteira Python | **TL2cgen** (gera C99 sem dependências): adiado para o caminho de ECU. Manter em Python: preserva os cerca de 0,5 ms por chamada |
+| Inferência do IDS | **TL2cgen** no build do modelo selecionado | Ferramenta de terceiros, estabelecida e citável; gera C99 sem dependência de runtime. O custo de compilação (minutos) só incide uma vez por modelo liberado, não no laço de exploração | **`libxgboost`**: 190 MB e 5x mais lenta por chamada, fica como **oráculo** de paridade. **Avaliador compacto**: 2,2x mais rápido que o TL2cgen (medido), reservado como melhoria |
 | Isolamento de rede | **Duas redes Docker** | Impede que o tráfego do feeder contamine o dataset | Rede única: poluiria a captura |
+
+### O que atravessa a fronteira Python → C++
+
+O desenvolvimento e o treino ficam em Python; o `ids_sensor` é C++. Mas **o TL2cgen cobre apenas o
+modelo de árvores**. São quatro artefatos cruzando a fronteira, e três ainda não existem em C++:
+
+| Artefato | Como atravessa | Estado |
+|---|---|---|
+| Modelo de árvores | TL2cgen gera C99 no build | resolvido |
+| **Extrator das 16 features** | **código C++ novo** | **a escrever, maior esforço** |
+| *Byte-models* (log-probabilidade por camada) | dado embarcado | a exportar |
+| Normalização (`xmin`/`xmax` do treino) | dado embarcado | a exportar |
+
+O **extrator** é o caminho crítico, e não é óbvio: ele tem **estado** (janelas deslizantes por fluxo
+e por origem, além do último pacote por chave de fluxo), calcula log-verossimilhança e entropia
+cruzada sobre os *byte-models*, e distância de Hamming entre *payloads* consecutivos. Nada disso é
+função pura, então portar é mais difícil que portar o modelo.
+
+É também onde entra a otimização já identificada da *source diversity*: trocar o conjunto
+recomputado a cada pacote por um contador incremental de distintos, O(1) em vez de O(janela). Faz
+sentido nascer assim na versão C++, em vez de otimizar o Python e portar depois.
+
+**A paridade vale para o extrator, não só para o modelo.** É mais fácil errar ali: basta uma janela
+começar cheia em vez de vazia, ou uma ordem de atualização diferente, e as features divergem em
+silêncio. O critério de aceite é *mesmo PCAP produz as mesmas 16 features nos dois lados*, não
+apenas a mesma classe no fim.
 
 ### Nota sobre a inferência: bancada não é ECU
 
