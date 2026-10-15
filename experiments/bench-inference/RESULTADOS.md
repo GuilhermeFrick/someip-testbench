@@ -2,21 +2,55 @@
 
 **Máquina:** AWS EC2 `c7a.2xlarge`, AMD **EPYC 9R14** (Zen 4), 8 vCPU sem SMT, Ubuntu 24.04,
 gcc 13.3, xgboost 3.3.0, treelite 4.7.2, tl2cgen 1.0.0. Medição fixada em **1 núcleo**
-(`taskset -c 0`, `nthread=1`), 512 linhas distintas, 2000 repetições.
+(`taskset -c 0`, `nthread=1`), 512 linhas distintas, 5000 repetições.
 
 **Modelo:** `multi:softprob`, 5 classes, 300 rodadas → **1500 árvores**, **162.334 nós**.
 
-## Números
+## Métricas coletadas
 
-| Caminho | µs por predição | vs. piso | vs. `libxgboost` |
-|---|---:|---:|---:|
-| Python, 1 linha por chamada (`inplace_predict`) | 716,6 | 33x | 0,7x |
-| `libxgboost` C API, 1 linha por chamada | 502,4 | 23x | 1x |
-| TL2cgen (C99 gerado), 1 linha por chamada | 111,3 | 5,2x | **4,5x** |
-| **Avaliador compacto** (tabelas `const`), 1 linha | **48,1** | **2,2x** | **10,4x** |
-| `libxgboost` em lote (512 linhas, 1 núcleo) | 21,5 | 1x (piso) | — |
+Por motor, sobre **5000 chamadas** cronometradas individualmente:
 
-Variação entre execuções da ordem de ±6% (a `libxgboost` deu 534,8 e 502,4 em duas rodadas).
+| Métrica | Por quê |
+|---|---|
+| **p50, p95, p99**, mínimo e máximo da latência | Num IDS a cauda importa mais que a média; a média sozinha esconde o p99 |
+| Média da latência | Comparabilidade com o número já publicado da primeira contribuição |
+| **Desvio absoluto máximo** nas probabilidades, contra o `inplace_predict` do Python | Detecta divergência numérica silenciosa |
+| **Classes divergentes** (contagem de `argmax` diferente) | O que de fato importa para a detecção |
+| Tamanho do artefato de inferência | Explica a causa do resultado |
+| Tempo de build | Custo prático no pipeline |
+
+Medições com o processo fixado em 1 núcleo (`taskset -c 0`) e `nthread=1`.
+
+## Latência
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig1-latencia-dark.png">
+  <img src="figs/fig1-latencia-light.png" alt="Latência mediana por motor: libxgboost 533,2 us, TL2cgen 107,2 us, avaliador compacto 48,0 us, com o piso em lote de 21,5 us e o Python de 717 us como referências">
+</picture>
+
+| Caminho | média | p50 | p95 | p99 | vs. piso | vs. `libxgboost` |
+|---|---:|---:|---:|---:|---:|---:|
+| Python, 1 linha (`inplace_predict`) | 716,6 | — | — | — | 33x | 0,8x |
+| `libxgboost` C API, 1 linha | 535,2 | 533,2 | 573,5 | 591,9 | 24,8x | 1x |
+| TL2cgen (C99 gerado), 1 linha | 108,2 | 107,2 | 125,9 | 135,7 | 5,0x | **5,0x** |
+| **Avaliador compacto**, 1 linha | **48,5** | **48,0** | **62,7** | **70,3** | **2,2x** | **11,1x** |
+| `libxgboost` em lote (512 linhas) | 21,5 | — | — | — | 1x (piso) | — |
+
+Valores em µs. O número do Python vem do `prepare.py`, que só coleta média.
+
+## Cauda
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig2-cauda-dark.png">
+  <img src="figs/fig2-cauda-light.png" alt="Intervalo do p50 ao p99 por motor: libxgboost de 533 a 592 us, TL2cgen de 107 a 136 us, avaliador compacto de 48 a 70 us">
+</picture>
+
+A ordem dos motores **não muda no p99**, então a conclusão não depende da média. As caudas também
+são proporcionalmente parecidas (p99 cerca de 11% acima do p50 na `libxgboost`, 27% no TL2cgen, 46%
+no avaliador compacto): quanto menor a latência base, mais visível o ruído do sistema operacional.
+
+Variação entre execuções da ordem de ±6% (a `libxgboost` deu 534,8 e 502,4 em rodadas anteriores,
+com menos repetições).
 
 **Paridade numérica contra o `inplace_predict` do Python:**
 
@@ -36,7 +70,12 @@ Isso **reverteu a decisão** de usar a `libxgboost` no `ids_sensor` em regime po
 
 ## Conclusão 2: o problema do TL2cgen é tamanho de código
 
-O TL2cgen ganha da `libxgboost` por 4,5x, mas perde do avaliador compacto por 2,3x. A causa é
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig3-footprint-dark.png">
+  <img src="figs/fig3-footprint-light.png" alt="Tamanho do artefato: objeto compilado do TL2cgen 11,70 MB de codigo contra 2,60 MB de dado da tabela do avaliador compacto">
+</picture>
+
+O TL2cgen ganha da `libxgboost` por 5,0x, mas perde do avaliador compacto por 2,2x. A causa é
 tamanho de **código**:
 
 | Representação | Tamanho | Natureza |
@@ -68,7 +107,7 @@ softmax(margin, n_class);
 
 | Critério | `libxgboost` | TL2cgen | Avaliador compacto |
 |---|---|---|---|
-| Latência (1 linha) | 502 µs | 111 µs | **48 µs** |
+| Latência mediana (1 linha) | 533 µs | 107 µs | **48 µs** |
 | Paridade | exata | 1,6e-06 | **exata** |
 | Dependências | 190 MB de `.so` | nenhuma | **nenhuma** |
 | Tempo de build | — | **3 min 44 s** | **instantâneo** |
@@ -109,5 +148,6 @@ pip install treelite tl2cgen
 python prepare.py       --model .../results/model_16.json --out build
 python export_tables.py --model .../results/model_16.json --out build
 bash build.sh build
-taskset -c 0 ./build/bench build .../results/model_16.json 2000
+taskset -c 0 ./build/bench build .../results/model_16.json 5000
+python plot_results.py
 ```

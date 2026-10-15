@@ -93,6 +93,44 @@ static int argmax(const float *v, int n)
     return best;
 }
 
+/* ---------- estatisticas: a media esconde a cauda, entao gravamos cada chamada ---------- */
+typedef struct { double mean, p50, p95, p99, min, max; } stats_t;
+
+static int cmp_d(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+/* ordena `s` no lugar; a media e calculada antes de ordenar */
+static stats_t compute_stats(double *s, int n)
+{
+    stats_t st;
+    double sum = 0.0;
+    for (int i = 0; i < n; ++i) sum += s[i];
+    st.mean = sum / n;
+    qsort(s, (size_t)n, sizeof(double), cmp_d);
+    st.min = s[0];
+    st.max = s[n - 1];
+    st.p50 = s[(int)(0.50 * (n - 1))];
+    st.p95 = s[(int)(0.95 * (n - 1))];
+    st.p99 = s[(int)(0.99 * (n - 1))];
+    return st;
+}
+
+static void print_stats(stats_t st)
+{
+    printf("  latencia (us)   : media %8.2f | p50 %8.2f | p95 %8.2f | p99 %8.2f | max %8.2f\n",
+           st.mean, st.p50, st.p95, st.p99, st.max);
+}
+
+static void json_stats(FILE *f, const char *key, stats_t st, int last)
+{
+    fprintf(f, "    \"%s\": {\"mean\": %.4f, \"p50\": %.4f, \"p95\": %.4f, "
+               "\"p99\": %.4f, \"min\": %.4f, \"max\": %.4f}%s\n",
+            key, st.mean, st.p50, st.p95, st.p99, st.min, st.max, last ? "" : ",");
+}
+
 /* ---------- avaliador compacto: o modelo como DADO, nao como codigo ----------
  * 16 bytes por no. Laco limitado, sem recursao e sem alocacao no caminho quente. */
 typedef struct { float thr; int32_t feat; int32_t left; int32_t right; } node_t;
@@ -176,21 +214,30 @@ int main(int argc, char **argv)
         if (argmax(out, n_class) != argmax(REF + (size_t)r * n_class, n_class)) ++mism_xgb;
     }
 
-    /* latencia: 1 linha por chamada */
-    double t0 = now_s();
+    /* latencia: 1 linha por chamada, gravando cada amostra */
+    double *S = malloc((size_t)reps * sizeof(double));
     for (int i = 0; i < reps; ++i) {
         float *row = X + (size_t)(i % n_rows) * n_feat;
         snprintf(ai, sizeof ai,
                  "{\"data\":[%llu,false],\"shape\":[1,%d],\"typestr\":\"<f4\",\"version\":3}",
                  (unsigned long long)(uintptr_t)row, n_feat);
+        double a = now_s();
         XGBoosterPredictFromDense(bst, ai, CFG, NULL, &shape, &dim, &out);
+        S[i] = (now_s() - a) * 1e6;
     }
-    double us_xgb = (now_s() - t0) / reps * 1e6;
+    stats_t st_xgb = compute_stats(S, reps);
+    double us_xgb = st_xgb.mean;
 
     printf("=== libxgboost (C API, XGBoosterPredictFromDense, nthread=1) ===\n");
-    printf("  latencia        : %9.2f us/pred\n", us_xgb);
+    print_stats(st_xgb);
     printf("  paridade        : desvio max %.3e, classes divergentes %d/%d\n\n",
            worst_xgb, mism_xgb, n_rows);
+
+    /* resultados dos motores opcionais, para o JSON no final */
+    stats_t st_tl = {0}, st_tb = {0};
+    int has_tl = 0, has_tb = 0, mis_tl = 0, mis_tb = 0;
+    double par_tl = 0.0, par_tb = 0.0;
+    int tb_nodes = 0;
 
     /* ================= 2. TL2cgen, C99 gerado ================= */
 #ifdef HAVE_TL2CGEN
@@ -212,23 +259,22 @@ int main(int argc, char **argv)
             if (argmax(res, n_class) != argmax(REF + (size_t)r * n_class, n_class)) ++mism_tl;
         }
 
-        t0 = now_s();
         for (int i = 0; i < reps; ++i) {
             float *row = X + (size_t)(i % n_rows) * n_feat;
+            double a = now_s();
             for (int j = 0; j < n_feat; ++j) inst[j].fvalue = row[j];
             memset(res, 0, (size_t)n_class * sizeof(float));
             predict(inst, 0, res);
+            S[i] = (now_s() - a) * 1e6;
         }
-        double us_tl = (now_s() - t0) / reps * 1e6;
+        st_tl = compute_stats(S, reps);
+        has_tl = 1;
 
         printf("=== TL2cgen (C99 gerado) ===\n");
-        printf("  latencia        : %9.2f us/pred\n", us_tl);
+        print_stats(st_tl);
         printf("  paridade        : desvio max %.3e, classes divergentes %d/%d\n\n",
                worst_tl, mism_tl, n_rows);
-
-        printf("=== VEREDITO ===\n");
-        printf("  TL2cgen e %.1fx %s que a libxgboost\n",
-               us_tl > 0 ? (us_xgb / us_tl) : 0.0, us_xgb > us_tl ? "MAIS RAPIDO" : "mais lento");
+        par_tl = worst_tl; mis_tl = mism_tl;
         free(inst); free(res);
     }
 #else
@@ -264,21 +310,55 @@ int main(int argc, char **argv)
                 if (argmax(mg, nc) != argmax(REF + (size_t)r * n_class, n_class)) ++mism;
             }
 
-            t0 = now_s();
-            for (int i = 0; i < reps; ++i)
+            for (int i = 0; i < reps; ++i) {
+                double a = now_s();
                 eval_tables(nodes, roots, n_trees, nc, base,
                             X + (size_t)(i % n_rows) * n_feat, mg);
-            double us_tb = (now_s() - t0) / reps * 1e6;
+                S[i] = (now_s() - a) * 1e6;
+            }
+            st_tb = compute_stats(S, reps);
+            has_tb = 1; par_tb = worst; mis_tb = mism; tb_nodes = n_nodes;
 
-            printf("  latencia        : %9.2f us/pred\n", us_tb);
+            print_stats(st_tb);
             printf("  paridade        : desvio max %.3e, classes divergentes %d/%d\n\n",
                    worst, mism, n_rows);
-            printf("  vs libxgboost   : %.1fx mais rapido\n", us_xgb / us_tb);
-            printf("\n");
             free(mg); free(blob);
         }
     }
 
-    free(X); free(REF);
+    /* ================= resumo e JSON para os graficos ================= */
+    printf("=== RESUMO (speedup sobre a libxgboost, pela mediana) ===\n");
+    printf("  libxgboost          : %8.2f us  (1,0x)\n", st_xgb.p50);
+    if (has_tl)
+        printf("  TL2cgen             : %8.2f us  (%.1fx)\n", st_tl.p50, st_xgb.p50 / st_tl.p50);
+    if (has_tb)
+        printf("  avaliador compacto  : %8.2f us  (%.1fx)\n", st_tb.p50, st_xgb.p50 / st_tb.p50);
+    printf("\n");
+
+    snprintf(path, sizeof path, "%s/results.json", dir);
+    FILE *jf = fopen(path, "w");
+    if (jf) {
+        fprintf(jf, "{\n  \"setup\": {\"n_rows\": %d, \"n_feat\": %d, \"n_class\": %d, "
+                    "\"reps\": %d, \"n_nodes\": %d},\n",
+                n_rows, n_feat, n_class, reps, tb_nodes);
+        fprintf(jf, "  \"latency_us\": {\n");
+        json_stats(jf, "libxgboost_c_api", st_xgb, !has_tl && !has_tb);
+        if (has_tl) json_stats(jf, "tl2cgen", st_tl, !has_tb);
+        if (has_tb) json_stats(jf, "avaliador_compacto", st_tb, 1);
+        fprintf(jf, "  },\n");
+        fprintf(jf, "  \"paridade\": {\n");
+        fprintf(jf, "    \"libxgboost_c_api\": {\"max_abs_diff\": %.6e, \"divergentes\": %d},\n",
+                worst_xgb, mism_xgb);
+        if (has_tl)
+            fprintf(jf, "    \"tl2cgen\": {\"max_abs_diff\": %.6e, \"divergentes\": %d},\n",
+                    par_tl, mis_tl);
+        fprintf(jf, "    \"avaliador_compacto\": {\"max_abs_diff\": %.6e, \"divergentes\": %d}\n",
+                par_tb, mis_tb);
+        fprintf(jf, "  }\n}\n");
+        fclose(jf);
+        printf("[ok] metricas em %s\n", path);
+    }
+
+    free(S); free(X); free(REF);
     return 0;
 }
