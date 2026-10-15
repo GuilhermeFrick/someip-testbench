@@ -1,20 +1,20 @@
 # someip-testbench
 
-Bancada **aberta e reprodutível** de simulação, injeção de ataques e captura de tráfego
-**SOME/IP**, ancorada na dinâmica de um veículo simulado no **CARLA**, com nós de comunicação
-**em C++** seguindo o padrão da **AUTOSAR Adaptive Platform** e saída de **Security Events**
-para um **IdsM**.
+Bancada de simulação, injeção de ataques e captura de tráfego **SOME/IP**, ancorada na dinâmica de
+um veículo simulado no **CARLA**, com nós de comunicação **em C++** seguindo o padrão da
+**AUTOSAR Adaptive Platform** e saída de **Security Events** para um **IdsM**.
+
+Repositório de trabalho de mestrado, aberto por enquanto.
 
 ## Por que existe
 
-Os datasets SOME/IP mais realistas da literatura são construídos com cadeias **proprietárias**
-(PreScan + Simulink + **Vector CANoe**), o que limita a reprodutibilidade. Os geradores abertos,
-por outro lado, produzem tráfego sintético, sem dinâmica de veículo nem semântica de sensores.
+Os datasets SOME/IP mais realistas da literatura são construídos com cadeias proprietárias
+(PreScan + Simulink + Vector CANoe). Os geradores abertos, por outro lado, produzem tráfego
+sintético, sem dinâmica de veículo nem semântica de sensores.
 
-Esta bancada ocupa esse meio: entrega o **núcleo funcional de um CANoe para SOME/IP**
-(simulação de nós ECU a partir de uma matriz de comunicação, trace/captura, injeção de falhas)
-usando apenas software aberto, e acrescenta uma camada que o CANoe **não tem**: a cadeia
-**Security Event → IdsM** da AUTOSAR Adaptive.
+Esta bancada fica no meio: simula nós ECU a partir de uma matriz de comunicação, captura o
+barramento e injeta falhas, como o núcleo funcional de um CANoe para SOME/IP, e acrescenta uma
+camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Adaptive.
 
 ## O que ela faz
 
