@@ -90,12 +90,12 @@ São quatro frentes, em ordem de esforço:
 primeira contribuição, que vinha da fronteira Python somada ao caminho de uma linha da
 `libxgboost`.
 
-**Melhoria reservada:** o **avaliador compacto** (modelo como tabelas `const` percorridas por laço
-limitado) já foi medido em **2,2x mais rápido que o TL2cgen**, com paridade exata, 4,5x menos bytes
-e sem recompilar para trocar de modelo. Fica guardado como evolução, com o número já em mãos. Antes
-de promovê-lo é preciso fechar a lacuna dos **valores ausentes**: ele ignora a direção `missing` do
-XGBoost, o que não afetou a paridade porque os dados não têm NaN. Evidência em
-`experiments/bench-inference/RESULTADOS.md`.
+**Segundo oráculo:** o **avaliador compacto** (modelo como tabelas `const` percorridas por laço
+limitado) é **2x mais lento** que o TL2cgen com o modelo adotado, então não entra no caminho quente.
+Mas tem **paridade exata** (0,0 contra 3,87e-07) e **WCET limitado por construção**, o que o torna um
+segundo oráculo independente, ao lado da `libxgboost`. Não é papel menor: foi a conferência cruzada
+que revelou que o `base_score` deste modelo é um vetor por classe, e não um escalar, erro que
+passaria silencioso. Evidência em `experiments/bench-inference/RESULTADOS.md`.
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "setup": {"n_rows": 512, "n_feat": 16, "n_class": 5, "reps": 5000, "n_nodes": 7136},
+  "latency_us": {
+    "libxgboost_c_api": {"mean": 51.8222, "p50": 51.0500, "p95": 59.9900, "p99": 63.4310, "min": 50.4200, "max": 179.7700},
+    "tl2cgen": {"mean": 1.4816, "p50": 1.3900, "p95": 2.1000, "p99": 2.7100, "min": 0.8900, "max": 15.9200},
+    "avaliador_compacto": {"mean": 3.0232, "p50": 2.8500, "p95": 4.4310, "p99": 5.2500, "min": 1.8500, "max": 12.8100}
+  },
+  "paridade": {
+    "libxgboost_c_api": {"max_abs_diff": 0.000000e+00, "divergentes": 0},
+    "tl2cgen": {"max_abs_diff": 3.874302e-07, "divergentes": 0},
+    "avaliador_compacto": {"max_abs_diff": 0.000000e+00, "divergentes": 0}
+  }
+}

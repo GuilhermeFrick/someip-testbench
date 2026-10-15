@@ -151,3 +151,65 @@ bash build.sh build
 taskset -c 0 ./build/bench build .../results/model_16.json 5000
 python plot_results.py
 ```
+
+---
+
+# REVISÃO: o mesmo confronto com o modelo correto
+
+As medições acima usaram o modelo de **300 rodadas e profundidade 8** (1500 árvores, 162.334 nós).
+A varredura de encolhimento mostrou depois que esse modelo estava 23x maior que o necessário
+(ver [../model-sweep/RESULTADOS.md](../model-sweep/RESULTADOS.md)). Refazendo o confronto com o
+modelo adotado, **50 rodadas e profundidade 4** (250 árvores, 7.136 nós), o resultado **se inverte**.
+
+| Motor | modelo antigo (300×8) | **modelo adotado (50×4)** | |
+|---|---:|---:|---|
+| Python `inplace_predict` | 716,6 | 135,5 | |
+| `libxgboost` C API | 533,2 | 51,05 | |
+| **TL2cgen** | 107,2 | **1,39** | **vence** |
+| avaliador compacto | 48,0 | 2,85 | |
+
+Valores em µs, mediana, 1 núcleo, 5000 chamadas. Paridade: `libxgboost` e avaliador compacto
+exatos (0,0); TL2cgen 3,87e-07, com 0/512 classes divergentes.
+
+## A conclusão anterior estava errada
+
+Este documento afirmava que os ~535 µs eram **"intrínsecos ao caminho de predição de uma linha da
+`libxgboost`"**, independentes do tamanho do modelo. **Não são.** A mesma biblioteca caiu de 533
+para 51 µs apenas por trocar o modelo.
+
+O raciocínio que levou ao erro foi: "300 árvores de profundidade 8 dão ~2400 comparações, logo ~1 µs
+de trabalho real, logo os 535 µs não podem ser travessia". A premissa estava errada por duas razões:
+com 5 classes são **1500** árvores, não 300; e a medição em lote já indicava ~21,5 µs de computação
+real por predição, não 1 µs.
+
+**A explicação correta é mais simples: o fator dominante era o tamanho do modelo e o cache**, em
+todos os motores. Modelo grande torna tudo lento; modelo pequeno torna tudo rápido, e então a
+geração de código assume a liderança, porque os limiares viram constantes imediatas, sem carga de
+memória nem perseguição de ponteiro.
+
+## Todas as objeções ao TL2cgen caíram junto
+
+| | modelo antigo | modelo adotado |
+|---|---:|---:|
+| latência | 107,2 µs | **1,39 µs** |
+| tempo de compilação | 3 min 44 s | **3,7 s** |
+| objeto compilado | 11,7 MB | **535 KB** |
+| linhas de C geradas | 323.231 | 14.085 |
+
+O custo de build, que era o argumento contra usar TL2cgen dentro do laço do toolchain, deixou de
+existir.
+
+## O que resta do avaliador compacto
+
+Ele **deixou de ser uma melhoria de desempenho**: agora é 2x mais lento. Mantém três propriedades
+que o TL2cgen não tem, e que o tornam útil por outro motivo:
+
+- **paridade exata** (0,0 contra 3,87e-07), o que o qualifica como segundo oráculo independente;
+- **modelo como dado**, trocável sem recompilar;
+- **WCET limitado por construção** (`n_trees × DEPTH_GUARD`).
+
+O papel dele passa de "melhoria reservada" para **ativo de validação**. Não é papel menor: foi a
+conferência cruzada de paridade que revelou que o `base_score` deste modelo é um vetor por classe,
+e não um escalar, erro que passaria silencioso.
+
+**Decisão: TL2cgen no `ids_sensor`.**
