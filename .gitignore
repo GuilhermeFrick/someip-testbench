@@ -1,0 +1,21 @@
+# artefatos de build do experimento
+experiments/*/build/
+*.o
+*.so
+*.a
+bench
+
+# dados binarios gerados (reproduziveis com prepare.py)
+*.bin
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
