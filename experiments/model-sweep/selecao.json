@@ -1,0 +1,120 @@
+{
+  "validacao": [
+    {
+      "rounds": 25,
+      "depth": 4,
+      "macro_f1_val": 0.9546657969766473,
+      "mitm_multi_val": 0.8436302466581509
+    },
+    {
+      "rounds": 50,
+      "depth": 4,
+      "macro_f1_val": 0.9417938334658466,
+      "mitm_multi_val": 0.8396307561341125
+    },
+    {
+      "rounds": 100,
+      "depth": 4,
+      "macro_f1_val": 0.9379143939204264,
+      "mitm_multi_val": 0.8349225635471971
+    },
+    {
+      "rounds": 200,
+      "depth": 4,
+      "macro_f1_val": 0.9369071589870941,
+      "mitm_multi_val": 0.8320564825575021
+    },
+    {
+      "rounds": 300,
+      "depth": 4,
+      "macro_f1_val": 0.9352796596797152,
+      "mitm_multi_val": 0.8250758781427465
+    },
+    {
+      "rounds": 25,
+      "depth": 6,
+      "macro_f1_val": 0.8831053334303771,
+      "mitm_multi_val": 0.819827927258183
+    },
+    {
+      "rounds": 50,
+      "depth": 6,
+      "macro_f1_val": 0.7972587670978463,
+      "mitm_multi_val": 0.7916853885401138
+    },
+    {
+      "rounds": 100,
+      "depth": 6,
+      "macro_f1_val": 0.8454455736002153,
+      "mitm_multi_val": 0.7852503247726591
+    },
+    {
+      "rounds": 200,
+      "depth": 6,
+      "macro_f1_val": 0.8410896853726987,
+      "mitm_multi_val": 0.7628046190871034
+    },
+    {
+      "rounds": 300,
+      "depth": 6,
+      "macro_f1_val": 0.8411696161641821,
+      "mitm_multi_val": 0.7628138752265079
+    },
+    {
+      "rounds": 25,
+      "depth": 8,
+      "macro_f1_val": 0.9576453157955184,
+      "mitm_multi_val": 0.8243024648718599
+    },
+    {
+      "rounds": 50,
+      "depth": 8,
+      "macro_f1_val": 0.944390673948669,
+      "mitm_multi_val": 0.8161365936356638
+    },
+    {
+      "rounds": 100,
+      "depth": 8,
+      "macro_f1_val": 0.9445445064496191,
+      "mitm_multi_val": 0.8244535012967766
+    },
+    {
+      "rounds": 200,
+      "depth": 8,
+      "macro_f1_val": 0.9482636013957221,
+      "mitm_multi_val": 0.82751655846285
+    },
+    {
+      "rounds": 300,
+      "depth": 8,
+      "macro_f1_val": 0.9537218489205518,
+      "mitm_multi_val": 0.8260028725220132
+    }
+  ],
+  "teste": {
+    "escolhido": {
+      "rounds": 25,
+      "depth": 8,
+      "macro_f1_test": 0.9688728450436621,
+      "f1": {
+        "normal": 0.9944505779734008,
+        "dos": 0.9981361648969395,
+        "fuzzy": 0.9991392454149395,
+        "mitm_single": 0.9946602427929091,
+        "mitm_multi": 0.8579779941401221
+      }
+    },
+    "baseline_anterior": {
+      "rounds": 300,
+      "depth": 8,
+      "macro_f1_test": 0.9639515921624163,
+      "f1": {
+        "normal": 0.9935011147334328,
+        "dos": 0.9964578281996788,
+        "fuzzy": 0.9988166027984554,
+        "mitm_single": 0.9930226684346782,
+        "mitm_multi": 0.8379597466458363
+      }
+    }
+  }
+}

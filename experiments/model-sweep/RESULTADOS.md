@@ -169,3 +169,54 @@ Porém as três sementes deram resultados **idênticos**: sem `subsample` nem `c
 foi instrumento errado.** Para avaliar robustez seria preciso variar o **split** (janelas temporais
 distintas), não a semente. A diferença de 0,0006 entre as duas configurações continua sem suporte
 estatístico; a decisão por profundidade 4 se apoia em tamanho, WCET e estabilidade da coluna.
+
+---
+
+# CORREÇÃO METODOLÓGICA: a seleção estava sendo feita no teste
+
+As varreduras acima compararam configurações pelo **macro-F1 no conjunto de teste**, que é o mesmo
+sobre o qual o artigo reporta. Isso é **seleção no teste**: o procedimento é atacável mesmo quando o
+resultado é robusto, e contamina especificamente a comparação "configuração X é melhor que Y".
+
+Refeito com **split aninhado**, preservando a ordem temporal dentro de cada arquivo:
+
+```
+|<--------- treino (70%) --------->|<---- teste (30%) ---->|
+|<-- treino interno -->|<-- val -->|
+```
+
+A varredura escolhe na **validação**; o vencedor é retreinado no treino completo e só então
+avaliado no **teste**, que nunca participou da escolha.
+
+## O ranking mudou, o que justifica ter refeito
+
+| configuração | macro-F1 **validação** | macro-F1 **teste** | nós |
+|---|---:|---:|---:|
+| **r25_d8** ← vencedor | **0,9576** | **0,9689** | 24.329 |
+| r25_d4 | 0,9547 | 0,9643 | 3.685 |
+| r50_d4 | 0,9418 | **0,9695** | 7.136 |
+| r300_d8 (configuração antiga) | 0,9537 | 0,9640 | 162.334 |
+
+O `r50_d4` tinha o **melhor teste** e a **sétima melhor validação**. É a assinatura de vantagem por
+sorte no conjunto de reporte, que a seleção no teste não consegue distinguir de mérito. Foi essa a
+configuração que a varredura anterior elegeu.
+
+Na validação, a profundidade 4 cai de forma **monótona** com mais rodadas (0,9547 → 0,9353), um
+sinal de sobreajuste bem mais limpo do que o observado no teste.
+
+## Resultado final adotado
+
+| | antigo (r300_d8) | **adotado (r25_d8)** |
+|---|---:|---:|
+| macro-F1 (teste) | 0,9640 | **0,9689** |
+| MITM-multi (F1) | 0,8380 | **0,8580** |
+| MITM-multi (PR-AUC) | 0,9233 | **0,9942** |
+| nós | 162.334 | **24.329** (6,7x menos) |
+| latência fim a fim | 751 µs | **179 µs** (1 núcleo, cota 100%) |
+
+A conclusão qualitativa se mantém: o modelo anterior estava superdimensionado, encolher melhora a
+métrica, e a classe difícil é a que mais ganha.
+
+**Lição:** varrer hiperparâmetros é barato; varrer *olhando o conjunto de reporte* invalida a
+comparação. O custo de separar validação foi de 15 minutos, e mudou qual configuração seria
+publicada.
