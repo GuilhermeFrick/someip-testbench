@@ -93,6 +93,37 @@ static int argmax(const float *v, int n)
     return best;
 }
 
+/* ---------- avaliador compacto: o modelo como DADO, nao como codigo ----------
+ * 16 bytes por no. Laco limitado, sem recursao e sem alocacao no caminho quente. */
+typedef struct { float thr; int32_t feat; int32_t left; int32_t right; } node_t;
+
+#define DEPTH_GUARD 64   /* teto do laco: torna o WCET analisavel */
+
+static void softmax(float *v, int n)
+{
+    float mx = v[0];
+    for (int i = 1; i < n; ++i) if (v[i] > mx) mx = v[i];
+    double sum = 0.0;
+    for (int i = 0; i < n; ++i) { v[i] = expf(v[i] - mx); sum += v[i]; }
+    for (int i = 0; i < n; ++i) v[i] /= (float)sum;
+}
+
+static void eval_tables(const node_t *nodes, const int32_t *roots, int n_trees,
+                        int n_class, const float *base, const float *x, float *margin)
+{
+    /* base_score e um vetor por classe neste modelo, entao e a margem inicial */
+    memcpy(margin, base, (size_t)n_class * sizeof(float));
+    for (int t = 0; t < n_trees; ++t) {
+        int32_t i = roots[t];
+        for (int d = 0; d < DEPTH_GUARD; ++d) {
+            if (nodes[i].feat < 0) break;                      /* folha */
+            i = (x[nodes[i].feat] < nodes[i].thr) ? nodes[i].left : nodes[i].right;
+        }
+        margin[t % n_class] += nodes[i].thr;                   /* folha guarda o valor */
+    }
+    softmax(margin, n_class);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir   = (argc > 1) ? argv[1] : "build";
@@ -203,6 +234,50 @@ int main(int argc, char **argv)
 #else
     printf("=== TL2cgen ===\n  nao compilado (rode prepare.py e recompile com build.sh)\n\n");
 #endif
+
+    /* ================= 3. avaliador compacto (tabelas const) ================= */
+    snprintf(path, sizeof path, "%s/tables.bin", dir);
+    {
+        size_t tlen = 0;
+        unsigned char *blob = slurp(path, &tlen);
+        if (!blob) {
+            printf("=== avaliador compacto ===\n  tables.bin ausente"
+                   " (rode export_tables.py)\n\n");
+        } else {
+            const int32_t *hdr = (const int32_t *)blob;
+            int n_trees = hdr[0], nc = hdr[1], n_nodes = hdr[2];
+            const float *base = (const float *)(hdr + 4);
+            const int32_t *roots = (const int32_t *)(base + nc);
+            const node_t *nodes = (const node_t *)(roots + n_trees);
+            printf("=== avaliador compacto (tabelas const, 16 B/no) ===\n");
+            printf("  arvores=%d nos=%d tabela=%.2f MB\n",
+                   n_trees, n_nodes, (double)n_nodes * sizeof(node_t) / 1e6);
+
+            float *mg = calloc((size_t)nc, sizeof(float));
+
+            double worst = 0.0;
+            int mism = 0;
+            for (int r = 0; r < n_rows; ++r) {
+                eval_tables(nodes, roots, n_trees, nc, base, X + (size_t)r * n_feat, mg);
+                double d = max_abs_diff(mg, REF + (size_t)r * n_class, n_class);
+                if (d > worst) worst = d;
+                if (argmax(mg, nc) != argmax(REF + (size_t)r * n_class, n_class)) ++mism;
+            }
+
+            t0 = now_s();
+            for (int i = 0; i < reps; ++i)
+                eval_tables(nodes, roots, n_trees, nc, base,
+                            X + (size_t)(i % n_rows) * n_feat, mg);
+            double us_tb = (now_s() - t0) / reps * 1e6;
+
+            printf("  latencia        : %9.2f us/pred\n", us_tb);
+            printf("  paridade        : desvio max %.3e, classes divergentes %d/%d\n\n",
+                   worst, mism, n_rows);
+            printf("  vs libxgboost   : %.1fx mais rapido\n", us_xgb / us_tb);
+            printf("\n");
+            free(mg); free(blob);
+        }
+    }
 
     free(X); free(REF);
     return 0;
