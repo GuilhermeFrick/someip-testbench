@@ -211,11 +211,30 @@ flowchart LR
 
 Docker Compose, **um container e um IP por ECU**, com **duas redes separadas**:
 
-- `bus`: rede do barramento, com multicast habilitado, porque o SD depende disso. É a única capturada.
+- `bus`: rede do barramento, por onde corre o SOME/IP. É a única capturada.
 - `ctrl`: rede de controle, por onde o feeder do CARLA alimenta os sensores.
 
 Um IP por nó é o que torna a **rotulagem por IP de origem** confiável, a mesma estratégia já usada
 no dataset da primeira contribuição.
+
+### Dois requisitos de rede, verificados na prática
+
+Ambos foram descobertos ao validar o Service Discovery (ver
+[`platform/sd-smoke`](../platform/sd-smoke/)) e são condição para a bancada funcionar.
+
+**1. Todo nó precisa de rota multicast e de `NET_ADMIN`.** O Docker não cria rota para
+`224.0.0.0/4`, e o vsomeip só liga o Service Discovery depois de observar, via netlink, que existe
+interface no ar **e rota multicast**. Sem ela, a oferta entra num laço silencioso de
+`pending_sd_offers`, sem erro nem aviso. Cada nó precisa executar, antes de subir a pilha:
+
+```bash
+ip route add 224.0.0.0/4 dev eth0
+```
+
+**2. O monitor não pode ser um observador passivo comum.** A bridge do Docker só entrega multicast
+a quem entrou no grupo por IGMP, e um `tcpdump` em container separado não entra. Capturar o
+barramento exige que o monitor **entre nos grupos** ou que se use espelhamento de porta. Esse
+detalhe muda o desenho do nó `monitor`, que na primeira tentativa capturou zero pacotes de SD.
 
 ## 9. Estrutura de diretórios proposta
 

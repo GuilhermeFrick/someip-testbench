@@ -1,0 +1,40 @@
+# Imagem base da bancada: vsomeip (COVESA) compilado, mais ferramentas de captura.
+#
+# Todos os nos ECU herdam desta imagem. Ela e deliberadamente a UNICA que compila
+# o vsomeip: os nos so acrescentam o proprio binario, para que o tempo de build
+# da bancada nao cresca a cada no.
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+# Tag FIXA, nao master: a bancada precisa ser reproduzivel, e esta e a versao
+# em que o Service Discovery foi verificado funcionando (ver platform/sd-smoke).
+# Subir de versao exige repetir aquele teste.
+ARG VSOMEIP_REF=3.6.4
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git ca-certificates \
+        libboost-system-dev libboost-thread-dev libboost-filesystem-dev \
+        libboost-log-dev libboost-program-options-dev \
+        tcpdump iproute2 iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+# vsomeip: pilha SOME/IP de referencia. E a mesma usada para gerar o dataset do
+# baseline, o que da continuidade metodologica ao trabalho.
+RUN git clone --depth 1 --branch ${VSOMEIP_REF} https://github.com/COVESA/vsomeip.git /src/vsomeip
+
+WORKDIR /src/vsomeip/build
+RUN cmake -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_SIGNAL_HANDLING=1 \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          .. \
+    && make -j"$(nproc)" \
+    && make install \
+    && ldconfig
+
+# Os exemplos do proprio vsomeip servem de teste de fumaca do Service Discovery,
+# antes de existir qualquer no nosso.
+RUN make -j"$(nproc)" notify-sample subscribe-sample || true
+
+ENV LD_LIBRARY_PATH=/usr/local/lib
+WORKDIR /work
+CMD ["/bin/bash"]
