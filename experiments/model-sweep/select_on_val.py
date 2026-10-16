@@ -1,21 +1,69 @@
 #!/usr/bin/env python3
-"""Selecao de hiperparametros em VALIDACAO, nao no teste.
+"""Seleção de hiperparâmetros em VALIDAÇÃO, com split temporal aninhado.
 
-A varredura anterior comparou configuracoes pelo macro-F1 no conjunto de TESTE,
-que e o mesmo sobre o qual o artigo reporta. Isso e selecao no teste: o
-procedimento e atacavel mesmo que o resultado seja robusto.
+===============================================================================
+O PROBLEMA QUE ESTE SCRIPT RESOLVE
+===============================================================================
 
-Aqui o split e aninhado, preservando a ordem temporal dentro de cada arquivo:
+Uma varredura anterior (`sweep.py`) comparou 15 configurações de hiperparâmetros
+pelo macro-F1 do conjunto de **teste** — o mesmo conjunto sobre o qual o artigo
+reporta o resultado final.
 
-    |<--------- treino (70%) --------->|<---- teste (30%) ---->|
-    |<-- treino interno -->|<-- val -->|
-            (70% de 70%)     (30% de 70%)
+Isso é *seleção no teste*. O problema não é o resultado ser ruim; é o
+procedimento não permitir distinguir mérito de sorte. Ao escolher, entre 15
+candidatos, o que teve o melhor número no conjunto de reporte, parte do que se
+mede vira ruído daquele conjunto específico, e a métrica publicada fica
+otimista por construção.
 
-Fluxo honesto: varre na validacao, escolhe ali, retreina o vencedor no treino
-COMPLETO e so entao avalia no teste, que nunca participou da escolha.
+No nosso caso isso não foi hipotético. A configuração eleita naquela varredura
+(50 rodadas, profundidade 4) tinha:
+
+    - o MELHOR macro-F1 de teste    (0,9695, 1º lugar entre 15)
+    - a SÉTIMA melhor validação     (0,9418)
+
+Ou seja: vantagem concentrada justamente no conjunto onde se reporta. A seleção
+honesta elege outra configuração.
+
+===============================================================================
+O MÉTODO
+===============================================================================
+
+Split aninhado, preservando a ordem temporal dentro de cada arquivo de captura:
+
+    |<--------------- treino (70%) --------------->|<---- teste (30%) ---->|
+    |<-- treino interno (49%) -->|<-- val (21%) -->|
+                                                    ^
+                                        o teste nunca é tocado na escolha
+
+A ordem temporal importa porque o tráfego tem deriva: o conjunto de teste é um
+período POSTERIOR ao de treino. Um split aleatório deixaria o modelo ver o
+futuro e esconderia o sobreajuste. A validação reproduz essa mesma relação
+dentro do treino, para que a escolha seja feita sob a condição em que o modelo
+vai ser julgado.
+
+Fluxo em três etapas:
+
+    1. VARRER    treina cada configuração no treino interno,
+                 avalia na validação
+    2. ESCOLHER  seleciona a de maior macro-F1 na validação
+    3. REPORTAR  retreina a vencedora no treino COMPLETO (treino interno + val)
+                 e só então avalia no teste
+
+A etapa 3 retreina no treino completo porque, uma vez escolhida a configuração,
+não há motivo para desperdiçar os 21% de dados que serviram de validação.
+
+===============================================================================
+SAÍDA
+===============================================================================
+
+`<out>/selecao.json`, com:
+    "validacao" : as 15 configurações e seu macro-F1 de validação
+    "teste"     : a vencedora e o baseline anterior, avaliados no teste
+
+Gráficos: `python plot_selecao.py` (ver RESULTADOS.md).
 
 Uso:
-    python select_on_val.py --repo ~/someip-ids-multiclass-contentext --out val
+    python select_on_val.py --repo <repo-do-ids> --out val
 """
 from __future__ import annotations
 
@@ -27,18 +75,35 @@ import time
 
 import numpy as np
 
+# Grade da varredura. `rounds` é o número de rodadas de boosting; com 5 classes,
+# o XGBoost constrói rounds x 5 árvores no total.
 ROUNDS = [25, 50, 100, 200, 300]
 DEPTHS = [4, 6, 8]
-BASELINE = (300, 8)       # a configuracao que o artigo usava antes
+
+# Configuração usada no artigo antes desta varredura, mantida como referência
+# para quantificar o ganho.
+BASELINE = (300, 8)
 
 
 def nested_split(counts, frac_test=0.70, frac_val=0.70):
-    """Devolve (treino_interno, validacao, treino_completo, teste), temporais."""
+    """Corta treino interno, validação, treino completo e teste, nessa ordem.
+
+    `counts` é o número de pacotes de cada arquivo de captura. O corte é feito
+    DENTRO de cada arquivo e em sequência, nunca embaralhando: assim a validação
+    é sempre um período posterior ao do treino interno, e o teste posterior a
+    ambos. É isso que preserva a ordem temporal.
+
+    Frações resultantes do total, com os padrões:
+        treino interno  49%   (70% de 70%)
+        validação       21%   (30% de 70%)
+        treino completo 70%   (interno + validação)
+        teste           30%
+    """
     inner, val, full, test = [], [], [], []
     s = 0
     for c in counts:
-        cut_te = s + int(c * frac_test)          # fim do treino completo
-        cut_va = s + int(c * frac_test * frac_val)  # fim do treino interno
+        cut_te = s + int(c * frac_test)              # fim do treino completo
+        cut_va = s + int(c * frac_test * frac_val)   # fim do treino interno
         inner.append(np.arange(s, cut_va))
         val.append(np.arange(cut_va, cut_te))
         full.append(np.arange(s, cut_te))
@@ -50,9 +115,11 @@ def nested_split(counts, frac_test=0.70, frac_val=0.70):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", required=True)
+    ap.add_argument("--repo", required=True, help="repo do IDS multiclasse")
     ap.add_argument("--out", default="val")
-    ap.add_argument("--cache", default="features.npz")
+    ap.add_argument("--cache", default="features.npz",
+                    help="features ja extraidas; a extracao NAO depende dos "
+                         "hiperparametros, entao roda uma vez so")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
 
@@ -63,7 +130,7 @@ def main() -> None:
 
     z = np.load(a.cache, allow_pickle=True)
     Xn, y, counts = z["Xn"], z["y"], z["counts"].tolist()
-    idx = pipeline.CONTENT_EXT
+    idx = pipeline.CONTENT_EXT          # as 16 features
     cls = pipeline.CLASSES
 
     inner, val, full, test = nested_split(counts)
@@ -71,6 +138,7 @@ def main() -> None:
           f"treino completo={len(full):,}  teste={len(test):,}")
 
     def fit_eval(tr_idx, ev_idx, rounds, depth):
+        """Treina em `tr_idx` e avalia em `ev_idx`. Demais hiperparâmetros fixos."""
         clf = XGBClassifier(objective="multi:softprob", num_class=pipeline.N,
                             n_estimators=rounds, max_depth=depth,
                             learning_rate=0.3, tree_method="hist", device="cpu",
@@ -81,26 +149,32 @@ def main() -> None:
                                     zero_division=0)
         return clf, rep
 
-    # ---- 1. varredura NA VALIDACAO ----
-    print("\n=== selecao na validacao ===")
+    # ---------- ETAPA 1: varrer, avaliando sempre na VALIDAÇÃO ----------
+    print("\n=== etapa 1: varredura na validacao ===")
     val_rows = []
     for depth in DEPTHS:
         for rounds in ROUNDS:
             t0 = time.time()
             _, rep = fit_eval(inner, val, rounds, depth)
             m = rep["macro avg"]["f1-score"]
-            val_rows.append({"rounds": rounds, "depth": depth, "macro_f1_val": float(m),
+            val_rows.append({"rounds": rounds, "depth": depth,
+                             "macro_f1_val": float(m),
                              "mitm_multi_val": float(rep["mitm_multi"]["f1-score"])})
             print(f"  r{rounds:<3d} d{depth}  macro-F1(val)={m:.4f}  "
-                  f"mitm_multi={rep['mitm_multi']['f1-score']:.4f}  ({time.time()-t0:.0f}s)",
-                  flush=True)
+                  f"mitm_multi={rep['mitm_multi']['f1-score']:.4f}  "
+                  f"({time.time()-t0:.0f}s)", flush=True)
 
+    # ---------- ETAPA 2: escolher pela VALIDAÇÃO, e só por ela ----------
+    # Critério único: maior macro-F1 de validação. Tamanho do modelo e latência
+    # NÃO entram aqui; são discutidos à parte, com os números de custo medidos.
     best = max(val_rows, key=lambda r: r["macro_f1_val"])
     print(f"\n[vencedor na validacao] {best['rounds']} rodadas, profundidade "
           f"{best['depth']}  (macro-F1 val {best['macro_f1_val']:.4f})")
 
-    # ---- 2. retreina no treino COMPLETO e avalia no TESTE ----
-    print("\n=== avaliacao no teste (nunca usado na escolha) ===")
+    # ---------- ETAPA 3: retreinar no treino completo e reportar no TESTE ----------
+    # Primeiro contato do teste com qualquer decisão. O baseline anterior entra
+    # aqui apenas para quantificar o ganho, não para influenciar a escolha.
+    print("\n=== etapa 3: avaliacao no teste (nao participou da escolha) ===")
     final = {}
     for tag, (r, d) in {"escolhido": (best["rounds"], best["depth"]),
                         "baseline_anterior": BASELINE}.items():
@@ -108,7 +182,8 @@ def main() -> None:
         final[tag] = {"rounds": r, "depth": d,
                       "macro_f1_test": float(rep["macro avg"]["f1-score"]),
                       "f1": {c: float(rep[c]["f1-score"]) for c in cls}}
-        print(f"  {tag:18s} r{r} d{d}  macro-F1(teste)={final[tag]['macro_f1_test']:.4f}  "
+        print(f"  {tag:18s} r{r} d{d}  "
+              f"macro-F1(teste)={final[tag]['macro_f1_test']:.4f}  "
               f"mitm_multi={rep['mitm_multi']['f1-score']:.4f}")
 
     json.dump({"validacao": val_rows, "teste": final},

@@ -220,3 +220,55 @@ métrica, e a classe difícil é a que mais ganha.
 **Lição:** varrer hiperparâmetros é barato; varrer *olhando o conjunto de reporte* invalida a
 comparação. O custo de separar validação foi de 15 minutos, e mudou qual configuração seria
 publicada.
+
+## Como a seleção foi feita, e como verificá-la
+
+Script: [`select_on_val.py`](select_on_val.py). Saída: [`selecao.json`](selecao.json).
+Gráficos: [`plot_selecao.py`](plot_selecao.py).
+
+**O split** (`nested_split`, no próprio script) corta em sequência dentro de cada arquivo de
+captura, nunca embaralhando:
+
+```
+|<--------------- treino (70%) --------------->|<---- teste (30%) ---->|
+|<-- treino interno (49%) -->|<-- val (21%) -->|
+```
+
+A ordem temporal importa porque o tráfego tem deriva: o teste é um período posterior. Um split
+aleatório deixaria o modelo ver o futuro e esconderia o sobreajuste. A validação reproduz a mesma
+relação dentro do treino, para a escolha ser feita sob a condição em que o modelo será julgado.
+
+**As três etapas**, marcadas no código:
+
+1. **Varrer** — treina cada uma das 15 configurações no treino interno, avalia na validação.
+2. **Escolher** — `best = max(val_rows, key=lambda r: r["macro_f1_val"])`. Critério único: maior
+   macro-F1 de validação. Tamanho do modelo e latência **não entram aqui**.
+3. **Reportar** — retreina a vencedora no treino **completo** (interno + validação) e só então toca
+   no teste.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig-selecao-validacao-dark.png">
+  <img src="figs/fig-selecao-validacao-light.png" alt="macro-F1 de validacao por numero de rodadas, uma linha por profundidade; a configuracao escolhida, 25 rodadas e profundidade 8, esta destacada">
+</picture>
+
+Na validação, as profundidades 4 e 8 caem conforme as rodadas aumentam, que é o sinal de
+sobreajuste esperado sob split temporal. A vencedora é a de 25 rodadas e profundidade 8.
+
+## Por que não selecionar pelo teste
+
+Esta é a figura que sustenta o método.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figs/fig-validacao-vs-teste-dark.png">
+  <img src="figs/fig-validacao-vs-teste-light.png" alt="Dispersao de macro-F1 de validacao contra macro-F1 de teste; a configuracao com melhor teste tem apenas a setima melhor validacao">
+</picture>
+
+Cada ponto é uma configuração, posicionada pela validação (eixo x) e pelo teste (eixo y). **Se o
+desempenho de teste acompanhasse o de validação, os pontos formariam uma diagonal. Não formam.**
+
+O caso concreto: `r50_d4` tem o **melhor macro-F1 de teste** (0,9695) e apenas a **sétima** melhor
+validação (0,9418). Foi exatamente essa a configuração que a varredura anterior, que escolhia pelo
+teste, elegeu. A vantagem dela estava concentrada no conjunto de reporte.
+
+A diferença entre as duas no teste é de 0,0006 — mas o ponto não é a diferença de métrica, e sim
+que o procedimento anterior **não tinha como distinguir mérito de ruído**.
