@@ -1,0 +1,62 @@
+# Matriz de comunicação da bancada: a FONTE ÚNICA.
+#
+# Deste arquivo o gerador produz, de forma determinística, a configuração da
+# pilha vsomeip de cada nó, o mapa de rótulos do PCAP e (adiante) os cabeçalhos
+# C++ com os identificadores. Isso garante que código, pilha, rotulagem e
+# decodificação nunca divirjam, que é o ponto fraco típico de bancadas montadas
+# à mão.
+#
+# Os identificadores abaixo coincidem de propósito com os dos exemplos do
+# vsomeip. Assim o gerador pode ser validado contra binários conhecidamente
+# corretos: se a config gerada faz o `notify-sample` e o `subscribe-sample`
+# funcionarem, o gerador está certo.
+
+network:
+  subnet: 172.30.0.0/24
+  # Rota multicast obrigatória em cada nó: o Docker não a cria, e sem ela o
+  # vsomeip não liga o Service Discovery. Ver platform/sd-smoke/README.md.
+  multicast_route: 224.0.0.0/4
+  service_discovery:
+    multicast: 224.244.224.245
+    port: 30490
+    protocol: udp
+    initial_delay_min: 10
+    initial_delay_max: 100
+    repetitions_base_delay: 200
+    repetitions_max: 3
+    ttl: 3
+    cyclic_offer_delay: 2000
+
+services:
+  GnssService:
+    id: 0x1234
+    instance: 0x5678
+    port: 30509            # unreliable (UDP)
+    events:
+      - { name: Position, id: 0x8777, is_field: true, cycle_ms: 2000 }
+      - { name: Velocity, id: 0x8778, is_field: true, cycle_ms: 0 }
+      - { name: Status,   id: 0x8779, is_field: true }
+    eventgroups:
+      - { id: 0x4455, events: [Position, Velocity] }
+      # Eventgroup com endereço multicast próprio: acima do limiar de assinantes
+      # o vsomeip troca de unicast para multicast nas notificações.
+      - { id: 0x4465, events: [Velocity, Status],
+          multicast: { address: 224.225.226.233, port: 32344 } }
+      - { id: 0x4555, events: [Position, Status] }
+
+nodes:
+  # O papel de cada nó é contrato: a rotulagem do dataset é por IP de origem,
+  # então o endereço identifica quem gerou o pacote.
+  gnss_ecu:
+    ip: 172.30.0.11
+    app_id: 0x1277
+    app_name: service-sample      # nome que o binário de exemplo espera
+    role: sensor
+    provides: [GnssService]
+
+  hmi_ecu:
+    ip: 172.30.0.12
+    app_id: 0x1343
+    app_name: client-sample
+    role: consumidor
+    consumes: [GnssService]

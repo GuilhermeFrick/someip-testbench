@@ -23,3 +23,4 @@ Thumbs.db
 # saidas de execucao da bancada
 platform/*/out/
 *.pcap
+platform/*/generated/
