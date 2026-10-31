@@ -40,10 +40,10 @@ enum class IdsSensorErrc : ara::core::ErrorDomain::CodeType
     ArtefactNotFound     = 1, ///< The artefact file does not exist at the given path.
     ArtefactUnreadable   = 2, ///< The artefact exists but could not be read; see the support data.
     ArtefactCorrupted    = 3, ///< The artefact was read but its contents do not match the expected layout.
-    TrainingRunMismatch  = 4, ///< The artefacts do not all come from the same training run.
-    ModelNotAvailable    = 5, ///< No tree model is compiled into this build.
+    TrainingRunMismatch  = 4, ///< The artefacts do not all come from the same training run. NOT YET PRODUCED: no cross-artefact check exists.
+    ModelNotAvailable    = 5, ///< No tree model is compiled into this build. NOT YET PRODUCED: Classifier.cpp does not exist.
     InvalidConfiguration = 6, ///< A window size or capacity is zero, or otherwise unusable.
-    MalformedPacket      = 7, ///< The frame is not a well formed SOME/IP message.
+    MalformedPacket      = 7, ///< The frame is not a well formed SOME/IP message. NOT YET PRODUCED: SomeipParser.cpp does not exist.
 };
 
 /**

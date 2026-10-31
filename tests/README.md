@@ -2,11 +2,58 @@
 
 Rodam no **host**, nunca no alvo, como a §10 do padrão de código exige.
 
-| Arquivo | O que verifica |
+```bash
+bash tests/run_all.sh          # roda tudo, com os sanitizers ligados
+```
+
+| Arquivo | Tipo | O que verifica |
+|---|---|---|
+| `test_ara_core.cpp` | unitário | o subconjunto [`src/ara`](../src/ara/), incluindo `Result<void>` |
+| `test_bytemodel.cpp` | unitário | `HammingDistance`, a pontuação **posicional** e os erros de carga do artefato |
+| `test_feature_streamer.cpp` | unitário | validação, `Reset`, isolamento das janelas e o **despejo** |
+| `test_libecu.cpp` | unitário | os **caminhos de erro** da fachada, que o handshake não toca |
+| `test_comm_matrix.cpp` + `check_comm_matrix.py` | consistência | o cabeçalho gerado contra o YAML da matriz |
+| `test_parity_streamer.cpp` + `gen_parity_vectors.py` | oráculo | **as 16 features contra o extrator do Python** |
+| [`platform/node-handshake`](../platform/node-handshake/) | integração | dois nós trocando SOME/IP em containers |
+
+**104 asserções**, todas sob AddressSanitizer e UndefinedBehaviorSanitizer.
+
+## O levantamento que deu origem aos unitários
+
+Até aqui havia um teste de oráculo (paridade), um de integração (handshake), um de
+consistência (matriz) e **um** unitário. Levantando a cobertura dos códigos de erro:
+
+| | declarados | exercitados antes | agora |
+|---|---:|---:|---:|
+| `EcuErrc` (libecu) | 11 | **0** | 8 |
+| `IdsSensorErrc` | 7 | 5 | 7 |
+| `Result<void>` | — | **0** | sim |
+
+⚠️ **E o levantamento achou algo pior que falta de teste: seis códigos declarados
+que nada nunca retornava.** Um código de erro que ninguém produz é documentação, não
+comportamento, e ler o `enum` como lista de garantias estaria errado.
+
+| código | situação |
 |---|---|
-| `test_ara_core.cpp` | o subconjunto [`src/ara`](../src/ara/) com os tipos reais do pipeline |
-| `test_comm_matrix.cpp` + `check_comm_matrix.py` | o cabeçalho gerado contra o YAML da matriz |
-| `test_parity_streamer.cpp` + `gen_parity_vectors.py` | **as 16 features contra o extrator do Python** |
+| `ArtefactUnreadable` | **corrigido**: o `@retval` prometia desde o início, mas o `fopen` só devolvia `ArtefactNotFound`. Agora distingue por `errno` e leva o errno no *support data* |
+| `ServiceDiscoveryNotReady` | o cabeçalho dizia que ele "transforma o silêncio do SD num erro que o chamador tem de tratar". **Não transforma**: a `Skeleton` oferece e não verifica. Marcado como não produzido, e a frase corrigida |
+| `TrainingRunMismatch` | nenhuma verificação cruzada de artefatos existe. Marcado |
+| `SubscriptionTimeout` | `Proxy::Subscribe` não espera confirmação. Marcado |
+| `MalformedPacket`, `ModelNotAvailable` | os `.cpp` que os produziriam não existem ainda. Marcados |
+
+Cada um deles carrega agora `NOT YET PRODUCED` no próprio enumerador, com o motivo.
+
+## Casos que pegaram erro de verdade
+
+Não são hipóteses: cada linha abaixo é um defeito que o teste encontrou.
+
+| teste | o que pegou |
+|---|---|
+| `test_comm_matrix` | `static constexpr` membro de dado quebrava a **ligação** em C++14 quando passado por referência; a compilação passava limpa |
+| `test_feature_streamer` | a minha expectativa da rampa de `repeat_rate` estava errada, não o código: a taxa é calculada **antes** do append |
+| `test_bytemodel` | o `@retval` documentava `ArtefactUnreadable` que a implementação não produzia |
+| `run_all.sh` | `test_ara_core` estava **obsoleto** contra a API nova do `ByteModel` e nem compilava; passava antes porque eu o rodei antes da mudança |
+| sensibilidade da paridade | o gerador não cobria a assimetria do payload vazio, e quebrar a janela de repetição **passava** |
 
 ```bash
 cd <raiz do repo>

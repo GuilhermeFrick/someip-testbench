@@ -12,30 +12,13 @@
 #include "src/ids_sensor/Sensor.hpp"
 
 /* ------------------------------------------------------------------ */
-/* O dominio de erro precisa de definicao para o ADL fechar.          */
-namespace ids
-{
-const ara::core::ErrorDomain &GetIdsSensorErrorDomain() noexcept
-{
-    static const IdsSensorErrorDomain domain;
-    return domain;
-}
-} // namespace ids
+/* O dominio de erro tem definicao em src/ids_sensor/IdsSensorErrorDomain.cpp,
+ * que este teste linka. Antes dele existir, a definicao ficava aqui.    */
 
 /* ------------------------------------------------------------------ */
-/* Definicoes minimas das funcoes que o componente ainda declara sem
- * implementar. Nao sao a implementacao real: o objetivo deste teste e
- * exercitar os TIPOS e os TEMPLATES, nao a logica.                   */
-namespace ids
-{
-ByteModels ByteModels::Create(const ByteModel::LogProbTable &someip,
-                              const ByteModel::LogProbTable &sd,
-                              const ByteModel::LogProbTable &l4)
-{
-    return ByteModels(ByteModel(someip), ByteModel(sd), ByteModel(l4));
-}
-} // namespace ids
-
+/* Definicao minima da unica funcao que ainda nao tem implementacao real.
+ * O objetivo deste arquivo e exercitar os TIPOS e os TEMPLATES, nao a
+ * logica do componente.                                              */
 namespace ara
 {
 namespace core
@@ -149,19 +132,28 @@ int main()
         Checa(soma == 150U, "iteravel em range-for");
     }
 
-    std::printf("\n== Result com tipo SEM construtor padrao (ByteModels) ==\n");
+    std::printf("\n== Result com tipo SEM construtor padrao (ByteModel) ==\n");
     {
+        /* ByteModel nao tem construtor padrao, e e por isso que serve aqui: elimina
+         * a implementacao preguicosa de Result com um membro `T value;`. O tipo
+         * usado antes era ByteModels, mas ele passou a sair por unique_ptr quando o
+         * ByteModel virou posicional, e este teste nao acompanhou a mudanca. */
         ids::ByteModel::LogProbTable t;
-        t.fill(-1.0F);
-        const ids::ByteModels m = ids::ByteModels::Create(t, t, t);
-        Result<ids::ByteModels> r = m;
-        Checa(r.HasValue(), "Result guarda ByteModels, que nao e default-constructible");
-        Checa(r.Value().Someip().LogProb()[0] == -1.0F, "valor acessivel e correto");
-        Result<ids::ByteModels> e = Result<ids::ByteModels>::FromError(ErrorCode(ids::IdsSensorErrc::ArtefactCorrupted));
+        for (std::size_t pos = 0U; pos < ids::kMaxPositions; ++pos)
+        {
+            t[pos].fill(-1.0);
+        }
+
+        Result<ids::ByteModel> r = ids::ByteModel::Create(t, 8U);
+        Checa(r.HasValue(), "Result guarda ByteModel, que nao e default-constructible");
+        Checa(r.Value().Positions() == 8U, "valor acessivel e correto");
+
+        Result<ids::ByteModel> e = Result<ids::ByteModel>::FromError(ErrorCode(ids::IdsSensorErrc::ArtefactCorrupted));
         Checa(!e.HasValue(), "caminho de erro");
         Checa(e.Error().Value() == 3, "codigo de erro preservado");
-        Result<ids::ByteModels> copia = r;
-        Checa(copia.HasValue() && (copia.Value().Sd().LogProb()[5] == -1.0F), "copia de Result com valor");
+
+        Result<ids::ByteModel> copia = r;
+        Checa(copia.HasValue() && (copia.Value().Positions() == 8U), "copia de Result com valor");
         copia = e;
         Checa(!copia.HasValue(), "atribuicao troca valor por erro");
         copia = r;
@@ -234,6 +226,34 @@ int main()
         }
         const Result<InstanceSpecifier> vazio = InstanceSpecifier::Create("");
         Checa(!vazio.HasValue(), "caminho vazio rejeitado, sem lancar excecao");
+    }
+
+    std::printf("\n== Result<void>: sucesso sem valor ==\n");
+    {
+        /* Acrescentado depois dos demais tipos, para uma operacao como oferecer um
+         * servico: ou funciona, ou falha com um motivo, e nao ha o que retornar no
+         * sucesso. Result<bool> perderia o motivo, e um ErrorCode nu forcaria um
+         * codigo "ok" no dominio. */
+        const Result<void> ok;
+        Checa(ok.HasValue(), "construido sem argumento e sucesso");
+        Checa(static_cast<bool>(ok), "converte para true");
+
+        const Result<void> falhou = Result<void>::FromError(ErrorCode(ids::IdsSensorErrc::ArtefactCorrupted));
+        Checa(!falhou.HasValue(), "FromError e falha");
+        Checa(!static_cast<bool>(falhou), "converte para false");
+        Checa(falhou.Error().Value() == 3, "o codigo de erro e preservado");
+        Checa(std::string(falhou.Error().Message()).find("layout") != std::string::npos, "e a mensagem tambem");
+
+        const Result<void> viaFromValue = Result<void>::FromValue();
+        Checa(viaFromValue.HasValue(), "FromValue e sucesso");
+
+        /* Copia e atribuicao, que e onde um Optional<E> interno mal feito quebra. */
+        Result<void> copia = falhou;
+        Checa(!copia.HasValue() && (copia.Error().Value() == 3), "copia preserva a falha");
+        copia = ok;
+        Checa(copia.HasValue(), "atribuicao troca falha por sucesso");
+        copia = falhou;
+        Checa(!copia.HasValue(), "e sucesso por falha");
     }
 
     std::printf("\n== FlowKey e hash ==\n");

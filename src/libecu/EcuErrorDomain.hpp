@@ -7,10 +7,17 @@
  * @copyright Copyright (c) 2026
  *
  * @details   The errors here are the ones a node can actually hit, and most of them come from
- *            lessons already paid for. ::ids::ecu::EcuErrc::ServiceDiscoveryNotReady in particular
- *            exists because the vsomeip Service Discovery fails SILENTLY when the multicast route
- *            is missing: the offer loops through @c pending_sd_offers with no error and no warning.
- *            Turning that into a code the caller must handle is the point.
+ *            lessons already paid for. ::ids::ecu::EcuErrc::ServiceDiscoveryNotReady is named after
+ *            the worst of them: the vsomeip Service Discovery fails SILENTLY when the multicast
+ *            route is missing, looping through @c pending_sd_offers with no error and no warning.
+ *
+ * @details   @warning Three codes here are DECLARED but NOT YET PRODUCED by any code path, and
+ *            each one is marked as such on its enumerator. An error code that nothing returns is
+ *            documentation, not behaviour, and reading this enumeration as a list of guarantees
+ *            would be wrong. In particular ::ids::ecu::EcuErrc::ServiceDiscoveryNotReady does NOT
+ *            yet turn that silence into an error: ::ids::ecu::Skeleton offers the service and does
+ *            not verify that it was announced. Until it does, a consumer timing out in
+ *            ::ids::ecu::Proxy::WaitUntilAvailable is the only signal.
  */
 #pragma once
 
@@ -39,9 +46,9 @@ enum class EcuErrc : ara::core::ErrorDomain::CodeType
     AlreadyStarted              = 3, ///< Start() called twice on the same object.
     NotStarted                  = 4, ///< An operation that needs the running stack was called before Start().
     RegistrationTimeout         = 5, ///< The routing manager did not register this application in time.
-    ServiceDiscoveryNotReady    = 6, ///< The service was offered but Service Discovery never announced it.
+    ServiceDiscoveryNotReady    = 6, ///< The service was offered but Service Discovery never announced it. NOT YET PRODUCED: Skeleton does not verify the announcement.
     ServiceUnavailableTimeout    = 7, ///< The consumer waited for the service and it never became available.
-    SubscriptionTimeout         = 8, ///< The subscription was requested and never acknowledged.
+    SubscriptionTimeout         = 8, ///< The subscription was requested and never acknowledged. NOT YET PRODUCED: Proxy::Subscribe does not wait for the acknowledgement.
     EventNotOffered             = 9, ///< Send() on an event that was not offered first.
     PayloadTooLarge             = 10, ///< The payload exceeds what one SOME/IP message may carry.
     InvalidConfiguration        = 11, ///< An identifier is zero, or the application name is empty.

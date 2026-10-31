@@ -13,6 +13,7 @@
  */
 #include "src/ids_sensor/ByteModel.hpp"
 
+#include <cerrno>
 #include <cstdio>
 
 namespace ids
@@ -84,10 +85,18 @@ ara::core::Result<std::unique_ptr<ByteModels>> ByteModels::Create(const std::str
 {
     using Res = ara::core::Result<std::unique_ptr<ByteModels>>;
 
-    std::FILE *file = std::fopen(path.c_str(), "rb");
+    errno                 = 0;
+    std::FILE *const file = std::fopen(path.c_str(), "rb");
     if (file == nullptr)
     {
-        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::ArtefactNotFound));
+        /* Distinguished by errno: "not there" and "there but unreadable" are
+         * different problems for whoever has to fix the deployment, and the
+         * second one carries the platform errno as support data. */
+        if (errno == ENOENT)
+        {
+            return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::ArtefactNotFound));
+        }
+        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::ArtefactUnreadable, errno));
     }
     else
     {
