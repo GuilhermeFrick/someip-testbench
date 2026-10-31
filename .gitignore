@@ -1,5 +1,10 @@
 # artefatos de build do experimento
 experiments/*/build/
+
+# saida do gerador: reproduzivel com tools/gen_config.py, nao se versiona.
+# Inclui o build/cfg/CommMatrix.hpp, que o codigo dos nos inclui: uma copia
+# nova do repo precisa rodar o gerador antes de compilar.
+build/
 *.o
 *.so
 *.a
