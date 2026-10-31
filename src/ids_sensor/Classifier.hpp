@@ -3,19 +3,25 @@
  * @author    Guilherme Frick (frickoliveira.ee@gmail.com)
  * @brief     Inference engine interface and its implementations: TL2cgen generated C99 and the
  *            compact table evaluator.
- * @version   1.0
+ * @version   2.0
  * @date      2026-10-31
  * @copyright Copyright (c) 2026
  *
  * @details   This interface is what allows swapping engines without touching the rest of the
  *            sensor, and what allows comparing two engines in the SAME harness, which is what
  *            keeps the comparison honest: harness constant, one variable isolated.
+ *
+ * @details   Predict() returns the probability vector rather than writing through a reference, per
+ *            rule A8-4-8. ::ids::ProbVec is 20 bytes and is returned in place, so the hot path
+ *            pays nothing for it.
  */
 #pragma once
 
 #include <memory>
 #include <string>
 
+#include "src/ara/core/Result.hpp"
+#include "src/ids_sensor/IdsSensorErrorDomain.hpp"
 #include "src/ids_sensor/types.hpp"
 
 /** @addtogroup IdsSensorClassifier Inference engines
@@ -40,18 +46,17 @@ class IClassifier
 
     /**
      * @brief Classify ONE already normalised feature vector.
-     * @param[in]  x   Normalised feature vector.
-     * @param[out] out Per-class probabilities.
-     * @return None.
+     * @param[in] x Normalised feature vector.
+     * @return Per-class probabilities, in the order of ::ids::TrafficClass.
      * @warning Does not allocate.
      */
-    virtual void Predict(const FeatureVec &x, ProbVec &out) const = 0;
+    virtual ProbVec Predict(const FeatureVec &x) const = 0;
 
     /**
      * @brief Engine name, as it appears in the reported metrics.
      * @return Stable, null-terminated engine identifier.
      */
-    virtual const char *Name() const = 0;
+    virtual const char *Name() const noexcept = 0;
 };
 
 /**
@@ -72,22 +77,34 @@ class Tl2cgenClassifier final : public IClassifier
   public:
     /**
      * @brief Bind to the model compiled into this build.
-     * @return None.
+     * @return The engine, or an error when this build carries no model.
+     * @retval ::ids::IdsSensorErrc::ModelNotAvailable No generated model is linked in, which
+     *                                                happens when the build skipped the TL2cgen
+     *                                                step.
+     * @details Returns a smart pointer, per section 8.2 of the C++ code standard.
      */
-    Tl2cgenClassifier();
+    static ara::core::Result<std::unique_ptr<Tl2cgenClassifier>> Create();
 
     /**
-     * @copydoc ::ids::IClassifier::Predict(const FeatureVec &, ProbVec &) const
+     * @copydoc ::ids::IClassifier::Predict(const FeatureVec &) const
      */
-    void Predict(const FeatureVec &x, ProbVec &out) const override;
+    ProbVec Predict(const FeatureVec &x) const override;
 
     /**
      * @copydoc ::ids::IClassifier::Name() const
      */
-    const char *Name() const override
+    const char *Name() const noexcept override
     {
         return "tl2cgen";
     }
+
+  private:
+    /**
+     * @brief Construct once the linked model has been found.
+     * @return None.
+     * @details Private so that Create() is the only way in.
+     */
+    Tl2cgenClassifier() noexcept;
 };
 
 /**
@@ -107,10 +124,15 @@ class CompactClassifier final : public IClassifier
     /**
      * @brief Load the node tables.
      * @param[in] tablesPath Path to the exported node-table artefact.
-     * @return None.
+     * @return The engine, or an error describing why the tables could not be loaded.
+     * @retval ::ids::IdsSensorErrc::ArtefactNotFound   No file exists at @p tablesPath.
+     * @retval ::ids::IdsSensorErrc::ArtefactUnreadable The file exists but could not be read; the
+     *                                                 support data carries the platform errno.
+     * @retval ::ids::IdsSensorErrc::ArtefactCorrupted  The node table is truncated, or declares a
+     *                                                 class count other than ::ids::kNumClasses.
      * @details The model is DATA here, so changing model does not require recompiling.
      */
-    explicit CompactClassifier(const std::string &tablesPath);
+    static ara::core::Result<std::unique_ptr<CompactClassifier>> Create(const std::string &tablesPath);
 
     /**
      * @brief Release the node tables.
@@ -119,20 +141,29 @@ class CompactClassifier final : public IClassifier
     ~CompactClassifier() override;
 
     /**
-     * @copydoc ::ids::IClassifier::Predict(const FeatureVec &, ProbVec &) const
+     * @copydoc ::ids::IClassifier::Predict(const FeatureVec &) const
      */
-    void Predict(const FeatureVec &x, ProbVec &out) const override;
+    ProbVec Predict(const FeatureVec &x) const override;
 
     /**
      * @copydoc ::ids::IClassifier::Name() const
      */
-    const char *Name() const override
+    const char *Name() const noexcept override
     {
         return "compacto";
     }
 
   private:
-    struct Impl;                  ///< Node tables, kept out of this header.
+    struct Impl; ///< Node tables, kept out of this header.
+
+    /**
+     * @brief Construct from already loaded node tables.
+     * @param[in,out] impl Loaded tables, taken over by this engine.
+     * @return None.
+     * @details Private so that Create() is the only way in.
+     */
+    explicit CompactClassifier(std::unique_ptr<Impl> impl) noexcept;
+
     std::unique_ptr<Impl> m_impl; ///< Owned node tables.
 };
 

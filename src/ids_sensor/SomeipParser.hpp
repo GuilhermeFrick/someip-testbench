@@ -2,7 +2,7 @@
  * @file      SomeipParser.hpp
  * @author    Guilherme Frick (frickoliveira.ee@gmail.com)
  * @brief     Layered packet decoder: Ethernet to IP to TCP/UDP to SOME/IP to Service Discovery.
- * @version   1.0
+ * @version   2.0
  * @date      2026-10-31
  * @copyright Copyright (c) 2026
  *
@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "src/ara/core/Result.hpp"
+#include "src/ids_sensor/IdsSensorErrorDomain.hpp"
 #include "src/ids_sensor/types.hpp"
 
 /** @addtogroup IdsSensorParser SOME/IP parser
@@ -23,22 +25,22 @@ namespace ids
 {
 
 /**
- * @brief Decodes a raw frame into a ParsedPacket.
+ * @brief Decodes a raw frame into a ::ids::ParsedPacket.
  */
 class SomeipParser final
 {
   public:
     /**
      * @brief Decode one frame.
-     * @param[in]  frame Raw frame to decode.
-     * @param[out] out   Decoded packet. On failure its @c valid field is set to false.
-     * @return Whether the frame carried a well formed SOME/IP message.
-     * @retval true  The frame is SOME/IP and @p out is populated.
-     * @retval false The frame is not SOME/IP or is malformed.
-     * @warning The payloads in @p out are VIEWS into the buffer of @p frame. Nothing is copied,
-     *          and they do not outlive the frame.
+     * @param[in] frame Raw frame to decode.
+     * @return The decoded packet, or an error when the frame does not carry a well formed SOME/IP
+     *         message.
+     * @retval ::ids::IdsSensorErrc::MalformedPacket The frame is not SOME/IP, or a length field is
+     *                                              inconsistent with the bytes actually present.
+     * @warning The payload views in the returned packet point INTO the buffer of @p frame. Nothing
+     *          is copied, and they do not outlive the frame.
      */
-    bool Parse(const Frame &frame, ParsedPacket &out) const;
+    ara::core::Result<ParsedPacket> Parse(const Frame &frame) const;
 };
 
 } // namespace ids

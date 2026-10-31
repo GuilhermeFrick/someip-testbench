@@ -2,7 +2,7 @@
  * @file      PacketSource.hpp
  * @author    Guilherme Frick (frickoliveira.ee@gmail.com)
  * @brief     Packet source interface and its two implementations: PCAP replay and live capture.
- * @version   1.0
+ * @version   2.0
  * @date      2026-10-31
  * @copyright Copyright (c) 2026
  *
@@ -10,12 +10,19 @@
  *            what makes the SAME sensor run offline over a PCAP and online on the bus. Without it
  *            the parity test would need a code path separate from the production one, and would
  *            then stop testing what actually runs.
+ *
+ * @details   Next() returns ara::core::Optional rather than a bool plus an output parameter, per
+ *            rule A8-4-8. End of stream is a normal outcome, not a failure, which is why it is an
+ *            Optional and not a Result.
  */
 #pragma once
 
 #include <memory>
 #include <string>
 
+#include "src/ara/core/Optional.hpp"
+#include "src/ara/core/Result.hpp"
+#include "src/ids_sensor/IdsSensorErrorDomain.hpp"
 #include "src/ids_sensor/types.hpp"
 
 /** @addtogroup IdsSensorPacketSource Packet sources
@@ -40,13 +47,11 @@ class IPacketSource
 
     /**
      * @brief Deliver the next frame.
-     * @param[out] out Next frame of the stream.
-     * @return Whether a frame was delivered.
-     * @retval true  @p out holds a valid frame.
-     * @retval false End of stream; @p out is unchanged.
-     * @warning The buffer referenced by @p out is only valid until the next call.
+     * @return The next frame, or an empty Optional at the end of the stream.
+     * @warning The view inside the returned frame points into a buffer the source owns, and is
+     *          only valid until the next call.
      */
-    virtual bool Next(Frame &out) = 0;
+    virtual ara::core::Optional<Frame> Next() = 0;
 };
 
 /**
@@ -58,9 +63,14 @@ class PcapSource final : public IPacketSource
     /**
      * @brief Open a capture file for replay.
      * @param[in] path Path to the PCAP file.
-     * @return None.
+     * @return The opened source, or an error describing why it could not be opened.
+     * @retval ::ids::IdsSensorErrc::ArtefactNotFound   No file exists at @p path.
+     * @retval ::ids::IdsSensorErrc::ArtefactUnreadable The file exists but could not be opened;
+     *                                                 the support data carries the platform errno.
+     * @retval ::ids::IdsSensorErrc::ArtefactCorrupted  The file is not a capture this build can read.
+     * @details Returns a smart pointer, per section 8.2 of the C++ code standard.
      */
-    explicit PcapSource(const std::string &path);
+    static ara::core::Result<std::unique_ptr<PcapSource>> Create(const std::string &path);
 
     /**
      * @brief Close the capture file and release the reader.
@@ -69,13 +79,22 @@ class PcapSource final : public IPacketSource
     ~PcapSource() override;
 
     /**
-     * @copydoc ::ids::IPacketSource::Next(Frame &)
+     * @copydoc ::ids::IPacketSource::Next()
      */
-    bool Next(Frame &out) override;
+    ara::core::Optional<Frame> Next() override;
 
   private:
-    struct Impl;                     ///< Reader state, kept out of this header.
-    std::unique_ptr<Impl> m_impl;    ///< Owned reader state.
+    struct Impl; ///< Reader state, kept out of this header.
+
+    /**
+     * @brief Construct from an already opened reader.
+     * @param[in,out] impl Opened reader state, taken over by this source.
+     * @return None.
+     * @details Private so that Create() is the only way in.
+     */
+    explicit PcapSource(std::unique_ptr<Impl> impl) noexcept;
+
+    std::unique_ptr<Impl> m_impl; ///< Owned reader state.
 };
 
 /**
@@ -87,12 +106,17 @@ class LiveSource final : public IPacketSource
     /**
      * @brief Start capturing on an interface.
      * @param[in] iface Name of the interface to capture from.
-     * @return None.
+     * @return The started source, or an error describing why capture could not start.
+     * @retval ::ids::IdsSensorErrc::ArtefactNotFound   No such interface.
+     * @retval ::ids::IdsSensorErrc::ArtefactUnreadable Capture could not be started, typically for
+     *                                                 want of privileges; the support data carries
+     *                                                 the platform errno.
      * @warning The capturing process must have joined the relevant IGMP groups, otherwise the
-     *          Docker bridge does not deliver the Service Discovery multicast. See
+     *          Docker bridge does not deliver the Service Discovery multicast, and this source
+     *          returns an empty Optional on the first call with no error to show for it. See
      *          platform/sd-smoke/README.md.
      */
-    explicit LiveSource(const std::string &iface);
+    static ara::core::Result<std::unique_ptr<LiveSource>> Create(const std::string &iface);
 
     /**
      * @brief Stop capturing and release the handle.
@@ -101,13 +125,22 @@ class LiveSource final : public IPacketSource
     ~LiveSource() override;
 
     /**
-     * @copydoc ::ids::IPacketSource::Next(Frame &)
+     * @copydoc ::ids::IPacketSource::Next()
      */
-    bool Next(Frame &out) override;
+    ara::core::Optional<Frame> Next() override;
 
   private:
-    struct Impl;                     ///< Capture state, kept out of this header.
-    std::unique_ptr<Impl> m_impl;    ///< Owned capture state.
+    struct Impl; ///< Capture state, kept out of this header.
+
+    /**
+     * @brief Construct from an already started capture.
+     * @param[in,out] impl Started capture state, taken over by this source.
+     * @return None.
+     * @details Private so that Create() is the only way in.
+     */
+    explicit LiveSource(std::unique_ptr<Impl> impl) noexcept;
+
+    std::unique_ptr<Impl> m_impl; ///< Owned capture state.
 };
 
 } // namespace ids

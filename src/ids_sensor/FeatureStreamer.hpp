@@ -2,7 +2,7 @@
  * @file      FeatureStreamer.hpp
  * @author    Guilherme Frick (frickoliveira.ee@gmail.com)
  * @brief     Extraction of the 16 features, packet by packet, with sliding-window state.
- * @version   1.0
+ * @version   2.0
  * @date      2026-10-31
  * @copyright Copyright (c) 2026
  *
@@ -20,7 +20,10 @@
 #include <cstddef>
 #include <memory>
 
+#include "src/ara/core/Optional.hpp"
+#include "src/ara/core/Result.hpp"
 #include "src/ids_sensor/ByteModel.hpp"
+#include "src/ids_sensor/IdsSensorErrorDomain.hpp"
 #include "src/ids_sensor/types.hpp"
 
 /** @addtogroup IdsSensorFeatureStreamer Feature extractor
@@ -46,11 +49,11 @@ struct StreamerConfig
 
 /**
  * @brief Produces the 16 raw features from a parsed packet.
- * @details The caps in StreamerConfig exist for the online case only. Offline, over a fixed PCAP,
- *          the per-flow state simply grows and nothing happens. In a sensor running for hours that
- *          is a leak: every new flow adds state that never leaves. With a cap, the oldest entry is
- *          evicted. It is a problem that only exists online, and that offline validation would not
- *          catch.
+ * @details The caps in ::ids::StreamerConfig exist for the online case only. Offline, over a fixed
+ *          PCAP, the per-flow state simply grows and nothing happens. In a sensor running for
+ *          hours that is a leak: every new flow adds state that never leaves. With a cap, the
+ *          oldest entry is evicted. It is a problem that only exists online, and that offline
+ *          validation would not catch.
  */
 class FeatureStreamer final
 {
@@ -59,9 +62,13 @@ class FeatureStreamer final
      * @brief Build an extractor bound to a set of byte models.
      * @param[in] models Byte models used for log-likelihood and cross entropy.
      * @param[in] cfg    Window parameters, which must match training.
-     * @return None.
+     * @return The extractor, or an error when the configuration is unusable.
+     * @retval ::ids::IdsSensorErrc::InvalidConfiguration A window size or a capacity is zero.
+     * @details Returns a smart pointer, per section 8.2 of the C++ code standard. The extractor
+     *          reserves its containers here, so that Step() never allocates.
+     * @warning @p models must outlive the extractor.
      */
-    FeatureStreamer(const ByteModels &models, const StreamerConfig &cfg);
+    static ara::core::Result<std::unique_ptr<FeatureStreamer>> Create(const ByteModels &models, const StreamerConfig &cfg);
 
     /**
      * @brief Release the window state.
@@ -71,14 +78,14 @@ class FeatureStreamer final
 
     /**
      * @brief Consume one packet and produce the 16 RAW features, not normalised.
-     * @param[in]  packet Parsed packet to consume.
-     * @param[out] out    Raw feature vector.
-     * @return Whether the packet produced a feature vector.
-     * @retval true  @p out holds the 16 raw features.
-     * @retval false The packet produces no vector, for instance because it is not SOME/IP.
-     * @warning Does not allocate on the hot path.
+     * @param[in] packet Parsed packet to consume.
+     * @return The 16 raw features, or an empty Optional when the packet produces no vector.
+     * @details Absence is a normal outcome here, not a failure, which is why this is an Optional
+     *          and not a Result: a packet may legitimately carry nothing the extractor can score.
+     * @warning Does not allocate. Consuming a packet UPDATES the window state, so calling this
+     *          twice with the same packet double counts it.
      */
-    bool Step(const ParsedPacket &packet, FeatureVec &out);
+    ara::core::Optional<FeatureVec> Step(const ParsedPacket &packet);
 
     /**
      * @brief Clear all window state.
@@ -88,7 +95,16 @@ class FeatureStreamer final
     void Reset();
 
   private:
-    struct Impl;                  ///< Window containers, kept out of this header.
+    struct Impl; ///< Window containers, kept out of this header.
+
+    /**
+     * @brief Construct from already reserved window state.
+     * @param[in,out] impl Reserved state, taken over by this extractor.
+     * @return None.
+     * @details Private so that Create() is the only way in.
+     */
+    explicit FeatureStreamer(std::unique_ptr<Impl> impl) noexcept;
+
     std::unique_ptr<Impl> m_impl; ///< Owned window state.
 };
 

@@ -270,6 +270,7 @@ someip-testbench/
 | Camada CARLA | **Python** | API madura e não aparece no barramento capturado | Cliente C++ do CARLA: custo alto, ganho nulo |
 | Inferência do IDS | **TL2cgen** no build do modelo selecionado | É o **mais rápido** com o modelo adotado (1,39 µs, contra 2,85 do avaliador compacto e 51 do `libxgboost`), gera C99 sem dependência de runtime, e é ferramenta de terceiros, estabelecida e citável. Com 250 árvores o código gerado cabe em cache, e aí os limiares viram constantes imediatas | **`libxgboost`**: 190 MB e 37x mais lenta por chamada, fica como **oráculo** de paridade. **Avaliador compacto**: 2x mais lento, mas com paridade exata e WCET limitado, serve como segundo oráculo |
 | Isolamento de rede | **Duas redes Docker** | Impede que o tráfego do feeder contamine o dataset | Rede única: poluiria a captura |
+| Padrão de código C++ | **AUTOSAR Adaptive, em C++14** | O alvo da plataforma é o AP, então o código usa o vocabulário da spec (`ara::core::Result`, `ara::core::Span`, `ara::idsm::EventReporter`) e segue as diretrizes AUTOSAR C++14. Portar para um stack AP de verdade é apagar `src/ara` e apontar os includes para o do fornecedor | **C++17 com `[[nodiscard]]`**, que o padrão de código C++ de referência pede na §11: o atributo não existe em C++14, e envolvê-lo numa macro violaria a regra A16-0-1. A regra A0-1-2 já cobre o caso, por análise estática. **Parâmetros de saída**, que a §7 do mesmo padrão recomenda: a A8-4-8 os proíbe |
 
 ### O que atravessa a fronteira Python → C++
 
