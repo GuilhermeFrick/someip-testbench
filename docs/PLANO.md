@@ -86,9 +86,10 @@ São quatro frentes, em ordem de esforço:
   pega os erros sutis (janela que começa cheia, ordem de atualização diferente).
 - *Classe*: a predição em C++ bate com a do `predict_proba`. A `libxgboost` serve de oráculo.
 
-**Ganho colateral:** a inferência nativa remove o gargalo de cerca de 0,5 ms por chamada medido na
-primeira contribuição, que vinha da fronteira Python somada ao caminho de uma linha da
-`libxgboost`.
+**Ganho colateral:** a inferência cai de cerca de **0,5 ms** por chamada, medidos na primeira
+contribuição, para **1,39 µs**. A causa não era a fronteira Python, que respondia por cerca de 25%,
+nem o caminho de uma linha da `libxgboost`: era o **tamanho do modelo**. A mesma biblioteca caiu de
+533 para 51 µs só trocando o modelo. Medição em `experiments/bench-inference/RESULTADOS.md`.
 
 **Segundo oráculo:** o **avaliador compacto** (modelo como tabelas `const` percorridas por laço
 limitado) é **2x mais lento** que o TL2cgen com o modelo adotado, então não entra no caminho quente.
@@ -126,6 +127,21 @@ apenas o README.
 
 ## Próximo passo imediato
 
-**Fase 0.** Antes de qualquer código de nó, escrever a `comm_matrix.yaml` mínima e validar que o
-SOME/IP-SD sobe e é decodificado no Wireshark dentro do Docker. É o único risco que, se não for
-resolvido, invalida o resto da arquitetura.
+A **Fase 0 está em dois terços.**
+
+| Item da Fase 0 | Estado |
+|---|---|
+| `platform/comm_matrix.yaml` mínimo | feito |
+| `tools/gen_config.py`: matriz para config vsomeip e headers C++ | feito |
+| SD anunciando e descobrindo entre containers | **validado**, com os exemplos do vsomeip |
+| `libecu`: `Skeleton` e `Proxy` mínimos | **a escrever** |
+| `deploy/docker-compose.yml` com a rede `bus` | **a escrever** |
+
+O risco que justificava a ordem das fases, o multicast do SD dentro do Docker, **está retirado**:
+foi diagnosticado e virou requisito de arquitetura (`ip route add 224.0.0.0/4` mais `NET_ADMIN` em
+cada nó). Evidência e caminho de depuração em
+[`platform/sd-smoke/README.md`](../platform/sd-smoke/README.md).
+
+**O passo é a `libecu`.** O critério de pronto da Fase 0 continua o mesmo, mas agora com código
+nosso em vez dos exemplos do vsomeip: dois nós gerados a partir da matriz de comunicação trocando
+um evento que o dissector do Wireshark decodifica.

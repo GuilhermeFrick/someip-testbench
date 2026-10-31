@@ -299,22 +299,34 @@ apenas a mesma classe no fim.
 
 ### Nota sobre a inferência: bancada não é ECU
 
-Vale separar os dois contextos, porque eles têm requisitos opostos.
+Vale separar os dois contextos, porque eles têm requisitos diferentes.
 
 A bancada roda em **container x86**. Ali não valem as restrições de ECU de produção (perfil POSIX
 **PSE51**, diretrizes **AUTOSAR C++14**, proibição de alocação dinâmica, análise de **WCET**,
-tamanho em flash). Logo, linkar a `libxgboost` é não só aceitável como **preferível**: é o mesmo
-motor do treino, o que elimina qualquer risco de divergência numérica, e já entrega o ganho de
-latência, porque o gargalo era a fronteira Python.
+tamanho em flash). O caminho de ECU é outro problema, e só precisa ser resolvido se e quando
+formos para hardware embarcado.
 
-O caminho de ECU é outro problema, e só precisa ser resolvido se e quando formos para hardware
-embarcado. Lá a `libxgboost` não serve: são dezenas de MB, com OpenMP, alocação dinâmica e sem
-WCET analisável. A solução seria exportar o modelo como **tabelas `const` mais um avaliador de
-laço limitado** (um ensemble de árvores é simples o bastante para isso, ao contrário de uma rede
-neural), usando a `libxgboost` como **oráculo** de validação.
+O que mudou é que **a escolha do motor deixou de depender dessa separação**. A hipótese original
+era que o gargalo fosse a fronteira Python, e que na bancada bastasse linkar a `libxgboost`, o mesmo
+motor do treino. A medição em [`experiments/bench-inference`](../experiments/bench-inference/RESULTADOS.md)
+desmentiu as duas coisas:
 
-**Decisão:** começar pela `libxgboost`. A comparação com alternativas de exportação fica para
-depois, com o número da bancada já em mãos.
+- o Python respondia por cerca de **25%**, não pelo gargalo;
+- os ~500 µs restantes **não eram intrínsecos à `libxgboost`**: a mesma biblioteca caiu para
+  **51 µs** só trocando o modelo. O fator dominante era **tamanho de modelo e cache**, em todos os
+  motores.
+
+Com o modelo adotado, o TL2cgen é o mais rápido (**1,39 µs**), não tem dependência de runtime e
+gera **C99**, que é a linguagem do caminho de ECU. O mesmo artefato serve nos dois contextos, e a
+decisão deixa de se bifurcar.
+
+O que a ECU exigiria a mais é **WCET analisável**, e nisso o avaliador compacto é melhor que o C
+gerado: o laço é limitado por construção (`n_trees × DEPTH_GUARD`) e o modelo é dado, não código.
+Ele fica como a rota de ECU, já escrita e já conferida, não como pendência.
+
+**Decisão: TL2cgen no `ids_sensor`**, com a `libxgboost` e o avaliador compacto como os dois
+**oráculos de paridade**. Foi a conferência cruzada entre eles que revelou que o `base_score` deste
+modelo é um vetor por classe, e não um escalar, erro que passaria em silêncio.
 
 ## 11. Referências de projeto
 
