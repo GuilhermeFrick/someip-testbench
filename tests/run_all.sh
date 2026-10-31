@@ -34,10 +34,11 @@ roda() {
     fi
 }
 
-SENSOR="src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp src/ids_sensor/IdsSensorErrorDomain.cpp"
+SENSOR="src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp src/ids_sensor/IdsSensorErrorDomain.cpp src/util/UtilErrorDomain.cpp"
 
 # ---------------------------------------------------------------- sem vsomeip
 ARGS=()
+roda test_sliding_window  tests/test_sliding_window.cpp src/util/UtilErrorDomain.cpp
 # test_ara_core usa o ByteModel como tipo sem construtor padrao, entao precisa do
 # ByteModel.cpp tambem, mesmo nao testando a pontuacao.
 roda test_ara_core        tests/test_ara_core.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/IdsSensorErrorDomain.cpp

@@ -2,7 +2,7 @@
  * @file      FeatureStreamer.cpp
  * @author    Guilherme Frick (frickoliveira.ee@gmail.com)
  * @brief     The 16 features, packet by packet, with the sliding-window state.
- * @version   1.0
+ * @version   2.0
  * @date      2026-10-31
  * @copyright Copyright (c) 2026
  *
@@ -11,19 +11,25 @@
  *            arbitrary it was still followed, because the model was trained on what that code
  *            produces, not on what the paper describes.
  *
- * @details   The two windows hold a 64-bit HASH of each payload rather than its bytes. They are
- *            only ever used for equality and for counting distinct values, so a hash answers both
+ * @details   The two windows are ::ids::util::SlidingWindow. The first version of this file wrote
+ *            the window behaviour inline twice, with its own trim loop each time; the component
+ *            replaced both. Its Push() returning the EVICTED item is what lets the diversity
+ *            window keep its distinct count in constant time without inspecting itself.
+ *
+ * @details   The windows hold a 64-bit HASH of each payload rather than its bytes. They are only
+ *            ever used for equality and for counting distinct values, so a hash answers both
  *            questions, cuts the per-entry cost from up to 1400 bytes to 8, and makes the distinct
- *            count maintainable in constant time, which is the optimisation already identified for
- *            the source-diversity feature. The cost is that a 64-bit collision would make this
- *            extractor disagree with the reference; over a 1000-entry window that probability is
- *            around 3e-14, and the parity test is what would surface it.
+ *            count maintainable in constant time. The cost is that a 64-bit collision would make
+ *            this extractor disagree with the reference; over a 1000-entry window that probability
+ *            is around 3e-14, and the parity test is what would surface it.
  */
 #include "src/ids_sensor/FeatureStreamer.hpp"
 
 #include <deque>
 #include <unordered_map>
 #include <vector>
+
+#include "src/util/SlidingWindow.hpp"
 
 namespace ids
 {
@@ -36,6 +42,9 @@ constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
 
 /// FNV-1a 64-bit prime.
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+/// Window of payload hashes.
+using HashWindow = util::SlidingWindow<std::uint64_t>;
 
 /**
  * @brief FNV-1a hash of a payload, used as its identity inside the windows.
@@ -53,19 +62,28 @@ std::uint64_t HashPayload(const PayloadView &payload)
 }
 
 /**
- * @brief State kept for the previous packet of one flow.
+ * @brief State kept for one flow: the previous packet, and the repetition window.
  * @details The payloads are COPIED, not referenced. A ::ids::PayloadView points into the frame
  *          buffer, which the packet source reuses on the next call, so keeping the view would
  *          compare against whatever arrived later.
  */
 struct FlowState
 {
+    /**
+     * @brief Build the state with an empty window of the configured size.
+     * @param[in] prototype Empty window of the right capacity, copied in.
+     * @return None.
+     */
+    explicit FlowState(const HashWindow &prototype) : recent(prototype)
+    {
+    }
+
     double                    ts    = 0.0; ///< Timestamp of the previous packet.
     std::uint16_t             ipLen = 0U;  ///< IP total length of the previous packet.
     std::vector<std::uint8_t> l4;          ///< Previous transport payload.
     std::vector<std::uint8_t> someip;      ///< Previous SOME/IP payload.
     std::vector<std::uint8_t> sd;          ///< Previous Service Discovery payload.
-    std::deque<std::uint64_t> recent;      ///< Hashes of the last payloads of this flow.
+    HashWindow                recent;      ///< Hashes of the last payloads of this flow.
 };
 
 /**
@@ -73,9 +91,18 @@ struct FlowState
  */
 struct SourceState
 {
-    std::deque<std::uint64_t>                    window;   ///< Hashes, oldest first.
-    std::unordered_map<std::uint64_t, std::size_t> counts; ///< How many times each hash is in the window.
-    std::size_t                                  distinct = 0U; ///< Size of the key set of counts.
+    /**
+     * @brief Build the state with an empty window of the configured size.
+     * @param[in] prototype Empty window of the right capacity, copied in.
+     * @return None.
+     */
+    explicit SourceState(const HashWindow &prototype) : window(prototype)
+    {
+    }
+
+    HashWindow                                     window;        ///< Hashes currently in the window.
+    std::unordered_map<std::uint64_t, std::size_t> counts;         ///< How many times each hash is in the window.
+    std::size_t                                    distinct = 0U; ///< Size of the key set of counts.
 };
 
 /**
@@ -106,8 +133,23 @@ PayloadView ViewOf(const std::vector<std::uint8_t> &buffer)
  */
 struct FeatureStreamer::Impl
 {
+    /**
+     * @brief Build with the two empty window prototypes.
+     * @param[in] recent Empty repetition window, of the configured size.
+     * @param[in] source Empty diversity window, of the configured size.
+     * @return None.
+     */
+    Impl(const HashWindow &recent, const HashWindow &source) : recentPrototype(recent), sourcePrototype(source)
+    {
+    }
+
     const ByteModels *models = nullptr; ///< Byte models; owned elsewhere and must outlive us.
     StreamerConfig    cfg;              ///< Window sizes and caps.
+
+    /// Empty windows of the right capacity, copied into each new flow and source. Built once, so
+    /// no per-flow path has to validate a capacity or handle a failure that cannot happen.
+    HashWindow recentPrototype;
+    HashWindow sourcePrototype;
 
     std::unordered_map<FlowKey, FlowState, FlowKeyHash> flows;   ///< State per flow.
     std::deque<FlowKey>                                 flowAge; ///< Flow keys in insertion order, for eviction.
@@ -129,16 +171,30 @@ ara::core::Result<std::unique_ptr<FeatureStreamer>> FeatureStreamer::Create(cons
 {
     using Res = ara::core::Result<std::unique_ptr<FeatureStreamer>>;
 
-    if ((cfg.recentPayloadWindow == 0U) || (cfg.sourcePayloadWindow == 0U) || (cfg.maxFlows == 0U) || (cfg.maxSources == 0U))
+    if ((cfg.maxFlows == 0U) || (cfg.maxSources == 0U))
     {
         return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::InvalidConfiguration));
     }
     else
     {
-        /* Usable configuration. */
+        /* Caps are usable. */
     }
 
-    std::unique_ptr<Impl> impl(new Impl());
+    /* The window sizes are validated by the component itself, which refuses a
+     * capacity of zero. Translating its error into ours keeps a single error
+     * domain on this interface. */
+    const ara::core::Result<HashWindow> recent = HashWindow::Create(cfg.recentPayloadWindow);
+    const ara::core::Result<HashWindow> source = HashWindow::Create(cfg.sourcePayloadWindow);
+    if ((!recent.HasValue()) || (!source.HasValue()))
+    {
+        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::InvalidConfiguration));
+    }
+    else
+    {
+        /* Both window sizes are usable. */
+    }
+
+    std::unique_ptr<Impl> impl(new Impl(recent.Value(), source.Value()));
     impl->models = &models;
     impl->cfg    = cfg;
 
@@ -151,8 +207,8 @@ ara::core::Result<std::unique_ptr<FeatureStreamer>> FeatureStreamer::Create(cons
 
 ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet)
 {
-    Impl              &impl = *m_impl;
-    const FlowKey     &key  = packet.flow;
+    Impl              &impl   = *m_impl;
+    const FlowKey     &key    = packet.flow;
     const PayloadView &someip = packet.plSomeip;
     const PayloadView &l4     = packet.plL4;
     const PayloadView &sd     = packet.plSd;
@@ -176,7 +232,7 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
         {
             /* Room left. */
         }
-        it = impl.flows.emplace(key, FlowState()).first;
+        it = impl.flows.emplace(key, FlowState(impl.recentPrototype)).first;
         impl.flowAge.push_back(key);
         it->second.l4.reserve(impl.cfg.reservedPayloadBytes);
         it->second.someip.reserve(impl.cfg.reservedPayloadBytes);
@@ -243,12 +299,12 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
     /* Computed BEFORE the current payload joins the window, so the window holds
      * only earlier packets. The reference also requires the current payload to be
      * non-empty, otherwise the rate is zero. */
-    if ((!flow.recent.empty()) && (someip.size() != 0U))
+    if ((!flow.recent.Empty()) && (someip.size() != 0U))
     {
         std::size_t matches = 0U;
-        for (const std::uint64_t h : flow.recent)
+        for (std::size_t i = 0U; i < flow.recent.Size(); ++i)
         {
-            if (h == someipHash)
+            if (flow.recent.At(i) == someipHash)
             {
                 ++matches;
             }
@@ -257,21 +313,18 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
                 /* Different payload. */
             }
         }
-        out[12] = static_cast<float>(static_cast<double>(matches) / static_cast<double>(flow.recent.size()));
+        out[12] = static_cast<float>(static_cast<double>(matches) / static_cast<double>(flow.recent.Size()));
     }
     else
     {
         out[12] = 0.0F;
     }
 
-    /* Appended UNCONDITIONALLY, empty payloads included. That asymmetry against
-     * the diversity window below is in the reference, and it matters: an empty
-     * payload still enlarges the denominator of later packets of this flow. */
-    flow.recent.push_back(someipHash);
-    while (flow.recent.size() > impl.cfg.recentPayloadWindow)
-    {
-        flow.recent.pop_front();
-    }
+    /* Pushed UNCONDITIONALLY, empty payloads included. That asymmetry against the
+     * diversity window below is in the reference, and it matters: an empty payload
+     * still enlarges the denominator of later packets of this flow. Nothing is done
+     * with the evicted hash here, because this window keeps no aggregate. */
+    static_cast<void>(flow.recent.Push(someipHash));
 
     /* ------------------------------------------------ features 13 and 14: size */
     out[13] = static_cast<float>(someip.size());
@@ -292,7 +345,7 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
         {
             /* Room left. */
         }
-        sit = impl.sources.emplace(key.src, SourceState()).first;
+        sit = impl.sources.emplace(key.src, SourceState(impl.sourcePrototype)).first;
         impl.sourceAge.push_back(key.src);
         sit->second.counts.reserve(impl.cfg.sourcePayloadWindow);
     }
@@ -302,10 +355,11 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
     }
     SourceState &source = sit->second;
 
-    /* Appended only when non-empty, unlike the repetition window above. */
+    /* Pushed only when non-empty, unlike the repetition window above. */
     if (someip.size() != 0U)
     {
-        source.window.push_back(someipHash);
+        const ara::core::Optional<std::uint64_t> evicted = source.window.Push(someipHash);
+
         if ((source.counts[someipHash]++) == 0U)
         {
             ++source.distinct;
@@ -315,11 +369,13 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
             /* Hash already present in the window. */
         }
 
-        while (source.window.size() > impl.cfg.sourcePayloadWindow)
+        /* This is why Push() hands the evicted item back: the distinct count can be
+         * maintained without walking the window. The reference recomputes
+         * len(set(window)) on every packet, which is O(window) and is 42% of the
+         * extraction cost. */
+        if (evicted.has_value())
         {
-            const std::uint64_t leaving = source.window.front();
-            source.window.pop_front();
-            std::unordered_map<std::uint64_t, std::size_t>::iterator cit = source.counts.find(leaving);
+            const std::unordered_map<std::uint64_t, std::size_t>::iterator cit = source.counts.find(evicted.value());
             if (cit != source.counts.end())
             {
                 --(cit->second);
@@ -338,16 +394,20 @@ ara::core::Optional<FeatureVec> FeatureStreamer::Step(const ParsedPacket &packet
                 /* Cannot happen while window and counts agree. */
             }
         }
+        else
+        {
+            /* The window was not full, so nothing left it. */
+        }
     }
     else
     {
         /* Empty payload does not enter the diversity window. */
     }
 
-    /* Computed AFTER the append, so the current packet IS counted. A window of a
+    /* Computed AFTER the push, so the current packet IS counted. A window of a
      * single entry gives zero rather than one, which is the reference's guard. */
-    out[15] = (source.window.size() > 1U)
-                  ? static_cast<float>(static_cast<double>(source.distinct) / static_cast<double>(source.window.size()))
+    out[15] = (source.window.Size() > 1U)
+                  ? static_cast<float>(static_cast<double>(source.distinct) / static_cast<double>(source.window.Size()))
                   : 0.0F;
 
     /* --------------------------------------------------- remember this packet */
