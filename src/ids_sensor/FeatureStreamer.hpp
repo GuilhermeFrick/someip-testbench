@@ -78,7 +78,7 @@ class FeatureStreamer final
      * @retval false The packet produces no vector, for instance because it is not SOME/IP.
      * @warning Does not allocate on the hot path.
      */
-    [[nodiscard]] bool Step(const ParsedPacket &packet, FeatureVec &out);
+    bool Step(const ParsedPacket &packet, FeatureVec &out);
 
     /**
      * @brief Clear all window state.

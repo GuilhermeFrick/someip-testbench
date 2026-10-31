@@ -38,7 +38,7 @@ class SomeipParser final
      * @warning The payloads in @p out are VIEWS into the buffer of @p frame. Nothing is copied,
      *          and they do not outlive the frame.
      */
-    [[nodiscard]] bool Parse(const Frame &frame, ParsedPacket &out) const;
+    bool Parse(const Frame &frame, ParsedPacket &out) const;
 };
 
 } // namespace ids

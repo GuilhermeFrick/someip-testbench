@@ -46,7 +46,7 @@ class ByteModel final
      * @param[in] bytes Payload view to score.
      * @return Sum of the per-byte log-probabilities, or 0.0F for an empty payload.
      */
-    [[nodiscard]] float LogLik(const Bytes &bytes) const;
+    float LogLik(const Bytes &bytes) const;
 
     /**
      * @brief Cross entropy of a payload, that is @c -LogLik/n.
@@ -56,7 +56,7 @@ class ByteModel final
      *          functions recompute the same sum, which costs about half the time of the whole
      *          entropy category. That waste is not repeated here.
      */
-    [[nodiscard]] float CrossEntropy(const Bytes &bytes) const;
+    float CrossEntropy(const Bytes &bytes) const;
 
     /**
      * @brief Compute both quantities in a single pass over the payload.
@@ -71,7 +71,7 @@ class ByteModel final
      * @brief Table in use.
      * @return Log-probability per byte value.
      */
-    [[nodiscard]] const LogProbTable &LogProb() const
+    const LogProbTable &LogProb() const
     {
         return m_logProb;
     }
@@ -95,7 +95,7 @@ struct ByteModels
      * @return The three loaded models.
      * @warning Must come from the same training run as the model and the normalisation bounds.
      */
-    [[nodiscard]] static ByteModels Load(const std::string &path);
+    static ByteModels Load(const std::string &path);
 };
 
 } // namespace ids

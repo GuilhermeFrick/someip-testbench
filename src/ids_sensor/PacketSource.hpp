@@ -46,7 +46,7 @@ class IPacketSource
      * @retval false End of stream; @p out is unchanged.
      * @warning The buffer referenced by @p out is only valid until the next call.
      */
-    [[nodiscard]] virtual bool Next(Frame &out) = 0;
+    virtual bool Next(Frame &out) = 0;
 };
 
 /**
@@ -71,7 +71,7 @@ class PcapSource final : public IPacketSource
     /**
      * @copydoc ::ids::IPacketSource::Next(Frame &)
      */
-    [[nodiscard]] bool Next(Frame &out) override;
+    bool Next(Frame &out) override;
 
   private:
     struct Impl;                     ///< Reader state, kept out of this header.
@@ -103,7 +103,7 @@ class LiveSource final : public IPacketSource
     /**
      * @copydoc ::ids::IPacketSource::Next(Frame &)
      */
-    [[nodiscard]] bool Next(Frame &out) override;
+    bool Next(Frame &out) override;
 
   private:
     struct Impl;                     ///< Capture state, kept out of this header.

@@ -45,7 +45,7 @@ class Normalizer final
      * @warning The artefact must come from the same training run as the model and the byte models.
      *          Mixing artefacts from different runs shifts the decision boundary without any error.
      */
-    [[nodiscard]] static Normalizer Load(const std::string &path);
+    static Normalizer Load(const std::string &path);
 
     /**
      * @brief Apply @c (x-xmin)/(xmax-xmin) in place.
@@ -62,7 +62,7 @@ class Normalizer final
      * @brief Lower bounds in use.
      * @return Per-feature lower bounds.
      */
-    [[nodiscard]] const FeatureVec &Xmin() const
+    const FeatureVec &Xmin() const
     {
         return m_xmin;
     }
@@ -71,7 +71,7 @@ class Normalizer final
      * @brief Upper bounds in use.
      * @return Per-feature upper bounds.
      */
-    [[nodiscard]] const FeatureVec &Xmax() const
+    const FeatureVec &Xmax() const
     {
         return m_xmax;
     }

@@ -81,7 +81,7 @@ class IEventReporter
  * @retval true  @p out holds the event type to report.
  * @retval false The class is ::ids::TrafficClass::Normal, which raises no event.
  */
-[[nodiscard]] bool TrafficClassToEvent(TrafficClass trafficClass, SecurityEventId &out);
+bool TrafficClassToEvent(TrafficClass trafficClass, SecurityEventId &out);
 
 } // namespace ids
 

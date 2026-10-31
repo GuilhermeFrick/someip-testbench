@@ -7,10 +7,18 @@
  * @copyright Copyright (c) 2026
  *
  * @details   Design constraints that hold for every file in this directory:
+ *            - the language is C++14, aligned with the AUTOSAR C++14 guidelines, so that this
+ *              component stays portable to the ECU path. This is a deliberate departure from the
+ *              C++ code standard, whose build section asks for C++17;
  *            - no allocation on the hot path: fixed sizes, buffers reserved at construction time;
- *            - payloads are non-owning VIEWS into the frame buffer, never copies;
- *            - AUTOSAR C++14 applies to the ECU path, not to this bench component, which targets
- *              C++17 as required by the C++ code standard.
+ *            - payloads are non-owning VIEWS into the frame buffer, never copies.
+ *
+ * @details   On discarded return values: the C++ code standard asks for @c [[nodiscard]], which is
+ *            a C++17 attribute. Wrapping it in a macro would breach AUTOSAR C++14 rule A16-0-1,
+ *            which restricts the pre-processor to include guards and file inclusion. It is also
+ *            unnecessary, because rule A0-1-2 already requires that the value returned by a
+ *            non-void function be used, and that rule is enforced by static analysis rather than
+ *            by a compiler attribute.
  */
 #pragma once
 
@@ -91,7 +99,7 @@ struct FlowKey
      * @retval true  Every field matches.
      * @retval false At least one field differs.
      */
-    [[nodiscard]] bool operator==(const FlowKey &other) const
+    bool operator==(const FlowKey &other) const
     {
         return ((src == other.src) && (dst == other.dst) && (sport == other.sport) && (dport == other.dport) && (proto == other.proto));
     }
@@ -110,7 +118,7 @@ struct FlowKeyHash
      * @param[in] key Key to hash.
      * @return Hash value, truncated to the platform word size.
      */
-    [[nodiscard]] std::size_t operator()(const FlowKey &key) const
+    std::size_t operator()(const FlowKey &key) const
     {
         std::uint64_t hash = key.src;
         hash               = ((hash * FNV_PRIME) ^ key.dst);
