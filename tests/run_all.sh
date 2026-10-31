@@ -35,6 +35,7 @@ roda() {
 }
 
 SENSOR="src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp src/ids_sensor/IdsSensorErrorDomain.cpp src/util/UtilErrorDomain.cpp"
+PARSER="src/ids_sensor/SomeipParser.cpp src/ids_sensor/IdsSensorErrorDomain.cpp"
 
 # ---------------------------------------------------------------- sem vsomeip
 ARGS=()
@@ -62,7 +63,17 @@ else
     echo "  PULADO: rode antes  python tools/gen_config.py --out build/cfg"
 fi
 
-# ------------------------------------------------------------- paridade
+# ------------------------------------------------- paridade do parser
+printf '\n######## test_parity_parser ########\n'
+if [ -f build/parity/parser_vectors.txt ]; then
+    ARGS=(build/parity/parser_vectors.txt)
+    roda test_parity_parser tests/test_parity_parser.cpp $PARSER
+else
+    echo "  PULADO: rode antes"
+    echo "    python tests/gen_parser_vectors.py --repro ../someip-ids-multiclass-contentext --out build/parity"
+fi
+
+# ----------------------------------------------- paridade do extrator
 printf '\n######## test_parity_streamer ########\n'
 if [ -f build/parity/parity_vectors.txt ]; then
     ARGS=(build/parity/parity_bytemodels.bin build/parity/parity_vectors.txt)
