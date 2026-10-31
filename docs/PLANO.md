@@ -125,23 +125,34 @@ apenas o README.
 
 ---
 
-## Próximo passo imediato
-
-A **Fase 0 está em dois terços.**
+## ✅ Fase 0 concluída
 
 | Item da Fase 0 | Estado |
 |---|---|
 | `platform/comm_matrix.yaml` mínimo | feito |
-| `tools/gen_config.py`: matriz para config vsomeip e headers C++ | feito |
-| SD anunciando e descobrindo entre containers | **validado**, com os exemplos do vsomeip |
-| `libecu`: `Skeleton` e `Proxy` mínimos | **a escrever** |
-| `deploy/docker-compose.yml` com a rede `bus` | **a escrever** |
+| `tools/gen_config.py`: matriz para config vsomeip, rótulos e **cabeçalhos C++** | feito |
+| SD anunciando e descobrindo entre containers | validado em [`platform/sd-smoke`](../platform/sd-smoke/README.md) |
+| `libecu`: `Skeleton` e `Proxy` | feito, sobre vsomeip 3.6.4 |
+| Dois nós nossos trocando um evento decodificado pelo dissector | **passou**, em [`platform/node-handshake`](../platform/node-handshake/README.md) |
+| `deploy/docker-compose.yml` com a rede `bus` | a escrever |
 
-O risco que justificava a ordem das fases, o multicast do SD dentro do Docker, **está retirado**:
-foi diagnosticado e virou requisito de arquitetura (`ip route add 224.0.0.0/4` mais `NET_ADMIN` em
-cada nó). Evidência e caminho de depuração em
-[`platform/sd-smoke/README.md`](../platform/sd-smoke/README.md).
+**Critério de pronto atendido.** 22 notificações em 20 s, e os campos no barramento batem com a
+matriz: `service 4660` (0x1234), `event 1911` (0x8777), `msgtype NOTIFICATION`. Os dois lados
+concordam no conteúdo, com o contador do provedor chegando igual no consumidor.
 
-**O passo é a `libecu`.** O critério de pronto da Fase 0 continua o mesmo, mas agora com código
-nosso em vez dos exemplos do vsomeip: dois nós gerados a partir da matriz de comunicação trocando
-um evento que o dissector do Wireshark decodifica.
+Os dois riscos que justificavam a ordem das fases **estão retirados**: o multicast do SD dentro do
+Docker (vira requisito, `ip route add 224.0.0.0/4` mais `NET_ADMIN` em cada nó) e a corretude da
+serialização (o dissector decodifica, com os identificadores da matriz).
+
+O `docker-compose.yml` fica para a Fase 1, onde passa a haver cinco nós e duas redes. Com dois nós
+o `run.sh` do degrau basta, e um compose agora seria reescrito na fase seguinte.
+
+## Próximo passo imediato
+
+**Fase 1**, e o caminho crítico dela é o **extrator das 16 features em C++**
+(`src/ids_sensor/FeatureStreamer.cpp`), não os nós. Os nós agora são variações do `gnss_ecu`: o
+molde existe e está provado.
+
+O extrator é o único estágio com estado, e a paridade com o Python se ganha ou se perde nele.
+Hoje `src/ids_sensor` tem **dez cabeçalhos e nenhum `.cpp`**: são 47 funções declaradas em onze
+arquivos de implementação que não existem.

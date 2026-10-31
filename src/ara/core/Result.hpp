@@ -16,8 +16,7 @@
  *
  * @details   Deviations from the specification, all deliberate: the monadic helpers
  *            (@c AndThen, @c OrElse, @c Map), @c ValueOrThrow and @c CheckError are not
- *            implemented, and neither is the @c Result<void, E> specialisation, because nothing
- *            in the bench needs them yet.
+ *            implemented, because nothing in the bench needs them yet.
  */
 #pragma once
 
@@ -26,6 +25,7 @@
 #include <utility>
 
 #include "src/ara/core/ErrorCode.hpp"
+#include "src/ara/core/Optional.hpp"
 
 /** @addtogroup AraCoreResult ara::core::Result
  *  @ingroup AraCore
@@ -359,6 +359,91 @@ class Result final
                                   ((alignof(T) > alignof(E)) ? alignof(T) : alignof(E))>::type m_storage;
 
     bool m_hasValue; ///< Whether m_storage holds a value rather than an error.
+};
+
+/**
+ * @brief Holds either success or an error, for an operation that yields no value.
+ * @tparam E Error type, ara::core::ErrorCode by default.
+ * @details The specialisation exists because an operation such as offering a service either works
+ *          or fails with a reason, and there is nothing to return on success. Using
+ *          @c Result<bool> for that would lose the reason; returning a bare @c ErrorCode would
+ *          force an "ok" code into the domain.
+ */
+template <typename E>
+class Result<void, E> final
+{
+  public:
+    using value_type = void; ///< Nothing is held on success.
+    using error_type = E;    ///< Type held on failure.
+
+    /**
+     * @brief Construct a successful result.
+     * @return None.
+     */
+    Result() noexcept : m_error()
+    {
+    }
+
+    /**
+     * @brief Construct a failed result.
+     * @param[in] error Error to hold.
+     * @return None.
+     */
+    explicit Result(const E &error) : m_error(error)
+    {
+    }
+
+    /**
+     * @brief Build a successful result.
+     * @return Result holding no error.
+     */
+    static Result FromValue()
+    {
+        return Result();
+    }
+
+    /**
+     * @brief Build a failed result.
+     * @param[in] error Error to hold.
+     * @return Result holding @p error.
+     */
+    static Result FromError(const E &error)
+    {
+        return Result(error);
+    }
+
+    /**
+     * @brief Whether the operation succeeded.
+     * @return Whether no error is held.
+     * @retval true  The operation succeeded.
+     * @retval false An error is held and Error() may be read.
+     */
+    bool HasValue() const noexcept
+    {
+        return !m_error.has_value();
+    }
+
+    /**
+     * @brief Whether the operation succeeded, for use in a condition.
+     * @return Same as HasValue().
+     */
+    explicit operator bool() const noexcept
+    {
+        return HasValue();
+    }
+
+    /**
+     * @brief Held error.
+     * @return Reference to the error.
+     * @warning Reading this while HasValue() is true is undefined behaviour. Check first.
+     */
+    const E &Error() const
+    {
+        return m_error.value();
+    }
+
+  private:
+    Optional<E> m_error; ///< The error, absent on success.
 };
 
 } // namespace core

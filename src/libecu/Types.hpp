@@ -21,7 +21,10 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+
+#include "src/ara/core/Span.hpp"
 
 /** @defgroup LibEcu libecu
  *  @brief Facade in the style of ara::com over the vsomeip stack.
@@ -44,6 +47,13 @@ using MethodId       = std::uint16_t; ///< SOME/IP method identifier.
 using EventgroupId   = std::uint16_t; ///< SOME/IP eventgroup identifier.
 using ApplicationId  = std::uint16_t; ///< vsomeip application identifier of a node.
 using Port           = std::uint16_t; ///< Transport port a service is offered on.
+
+using ByteView     = ara::core::Span<const std::uint8_t>; ///< Non-owning view over payload bytes.
+using EventgroupIds = ara::core::Span<const EventgroupId>; ///< Non-owning view over a list of eventgroups.
+
+/// Largest payload one SOME/IP message carries over UDP: VSOMEIP_MAX_UDP_MESSAGE_SIZE (1416)
+/// minus the 16-byte SOME/IP header.
+static constexpr std::size_t kMaxPayloadBytes = 1400U;
 
 } // namespace ecu
 } // namespace ids
