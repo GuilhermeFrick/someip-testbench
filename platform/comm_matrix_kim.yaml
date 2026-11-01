@@ -1,0 +1,150 @@
+# Matriz de comunicação RECUPERADA de uma captura, por tools/extract_matrix.py.
+#
+# Fonte: /d/data/pcap/benign_traffic.pcap
+# 400000 quadros, 201913 mensagens SOME/IP, 9 nós.
+#
+# ⚠️ NÃO EDITE à mão esperando que o barramento mude: este arquivo DESCREVE um
+# barramento que já existe. Editar aqui faz a bancada gerar outra coisa, que é
+# legítimo, mas aí deixa de ser reprodução e passa a ser variação -- e a variação
+# precisa ser deliberada e anotada, senão o estudo de desvio de domínio perde o
+# controle.
+#
+# ⚠️ O que a captura NÃO carrega, e portanto não está aqui:
+#   - os nomes das funções (ADAS, GNSS, IMU...): o barramento tem identificador,
+#     não semântica. Os nomes abaixo são sintéticos, derivados dos IDs;
+#   - a lógica que gera o conteúdo do payload: recuperam-se tamanho e cadência,
+#     não a função que os produziu.
+
+network:
+  subnet: 172.18.0.0/24
+  multicast_route: 224.0.0.0/4
+  service_discovery:
+    multicast: 224.244.224.245
+    port: 30490
+    protocol: udp
+    initial_delay_min: 10
+    initial_delay_max: 100
+    repetitions_base_delay: 200
+    repetitions_max: 3
+    ttl: 3
+    cyclic_offer_delay: 2000
+
+services:
+  Service1001:
+    id: 0x1001
+    instance: 0x0001
+    port: 30501
+    protocol: tcp
+    endpoints:            # anunciados na oferta de SD
+      - { protocol: tcp, port: 30501 }
+      - { protocol: udp, port: 31097 }
+    events:
+      - { name: Event0001, id: 0x0001, is_field: true, cycle_ms: 10.1, payload_bytes: 24 }
+      - { name: Event0002, id: 0x0002, is_field: true, cycle_ms: 5.1, payload_bytes: 24 }
+      - { name: Event0003, id: 0x0003, is_field: true, cycle_ms: 15.1, payload_bytes: 16 }
+      - { name: Event0004, id: 0x0004, is_field: true, cycle_ms: 25.1, payload_bytes: 24 }
+    eventgroups:
+      - { id: 0x0001, events: [Event0001] }
+      - { id: 0x0002, events: [Event0002] }
+      - { id: 0x0003, events: [Event0003] }
+      - { id: 0x0004, events: [Event0004] }
+
+  Service1002:
+    id: 0x1002
+    instance: 0x0002
+    port: 30502
+    protocol: tcp
+    endpoints:            # anunciados na oferta de SD
+      - { protocol: tcp, port: 30502 }
+      - { protocol: udp, port: 31098 }
+    events:
+      - { name: Event0001, id: 0x0001, is_field: true, cycle_ms: 10.1, payload_bytes: 16 }
+      - { name: Event0002, id: 0x0002, is_field: true, cycle_ms: 15.1, payload_bytes: 32 }
+      - { name: Event0003, id: 0x0003, is_field: true, cycle_ms: 10.1, payload_bytes: 16 }
+      - { name: Event0004, id: 0x0004, is_field: true, cycle_ms: 25.1, payload_bytes: 16 }
+    eventgroups:
+      - { id: 0x0001, events: [Event0001] }
+      - { id: 0x0002, events: [Event0002] }
+      - { id: 0x0003, events: [Event0003] }
+      - { id: 0x0004, events: [Event0004] }
+
+  Service1003:
+    id: 0x1003
+    instance: 0x0003
+    port: 30503
+    protocol: tcp
+    endpoints:            # anunciados na oferta de SD
+      - { protocol: tcp, port: 30503 }
+      - { protocol: udp, port: 31099 }
+    events:
+      - { name: Event0001, id: 0x0001, is_field: true, cycle_ms: 25.1, payload_bytes: 40 }
+      - { name: Event0002, id: 0x0002, is_field: true, cycle_ms: 25.0, payload_bytes: 40 }
+      - { name: Event0003, id: 0x0003, is_field: true, cycle_ms: 25.1, payload_bytes: 24 }
+    eventgroups:
+      - { id: 0x0001, events: [Event0001] }
+      - { id: 0x0002, events: [Event0002] }
+      - { id: 0x0003, events: [Event0003] }
+
+nodes:
+  node_2:
+    ip: 172.18.0.2
+    app_id: 0x1002
+    app_name: node-2
+    role: consumidor
+    consumes: [Service1001, Service1002, Service1003]
+
+  node_3:
+    ip: 172.18.0.3
+    app_id: 0x1003
+    app_name: node-3
+    role: consumidor
+    consumes: [Service1001]
+
+  node_4:
+    ip: 172.18.0.4
+    app_id: 0x1004
+    app_name: node-4
+    role: sensor
+    provides: [Service1003]
+
+  node_5:
+    ip: 172.18.0.5
+    app_id: 0x1005
+    app_name: node-5
+    role: sensor
+    provides: [Service1002]
+
+  node_6:
+    ip: 172.18.0.6
+    app_id: 0x1006
+    app_name: node-6
+    role: consumidor
+    consumes: [Service1002, Service1003]
+
+  node_7:
+    ip: 172.18.0.7
+    app_id: 0x1007
+    app_name: node-7
+    role: consumidor
+    consumes: [Service1001]
+
+  node_8:
+    ip: 172.18.0.8
+    app_id: 0x1008
+    app_name: node-8
+    role: consumidor
+    consumes: [Service1002]
+
+  node_9:
+    ip: 172.18.0.9
+    app_id: 0x1009
+    app_name: node-9
+    role: consumidor
+    consumes: [Service1001, Service1002, Service1003]
+
+  node_10:
+    ip: 172.18.0.10
+    app_id: 0x100A
+    app_name: node-10
+    role: sensor
+    provides: [Service1001]
