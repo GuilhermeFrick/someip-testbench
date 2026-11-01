@@ -135,6 +135,20 @@ else
     echo "  NAO COMPILOU:"; head -10 "$OBJ/tcm.err" | sed 's/^/    /'; FALHAS=$((FALHAS + 1))
 fi
 
+# ------------------------------------------- a outra saida do gerador
+# O test_comm_matrix confere os IDENTIFICADORES por round-trip contra o YAML.
+# Este confere a ESTRUTURA da tabela de runtime, que e o que o no generico
+# percorre: ponteiro nulo, contagem em desacordo com ponteiro, ou eventgroup
+# apontando para evento inexistente compilam perfeitamente e so quebram quando
+# um no tenta subir.
+printf '\n######## test_matrix_table ########\n'
+if [ -f build/cfg/CommMatrixTable.hpp ]; then
+    ARGS=()
+    roda test_matrix_table tests/test_matrix_table.cpp
+else
+    echo "  PULADO: rode antes  python3 tools/gen_config.py --out build/cfg"
+fi
+
 # ------------------------------------------------- paridade do parser
 printf '\n######## test_parity_parser ########\n'
 if [ -f build/parity/parser_vectors.txt ]; then

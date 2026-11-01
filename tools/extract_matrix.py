@@ -360,7 +360,15 @@ def emite(bus, grupos, orfaos, caminho, origem):
     for ip in sorted(bus.ips, key=lambda s: [int(x) for x in s.split(".")]):
         ultimo_octeto = int(ip.split(".")[-1])
         oferece = [s for s, d in bus.ofertas.items() if d["provider"] == ip]
-        consome = sorted({s for s, pares in bus.assinaturas.items() if any(p[0] == ip for p in pares)})
+        # Quais EVENTGROUPS, nao so quais servicos. Se todo consumidor assinasse
+        # tudo, o volume de trafego da reproducao sairia errado -- nesta captura
+        # o no .2 assina o eventgroup 1 dos tres servicos, enquanto o .9 assina o
+        # 4, o 4 e o 3. Assinatura e topologia, nao detalhe.
+        consome = {}
+        for servico, pares in bus.assinaturas.items():
+            grupos_do_no = sorted({g for (quem, g) in pares if quem == ip})
+            if grupos_do_no:
+                consome[servico] = grupos_do_no
         papel = "sensor" if oferece else "consumidor"
         L.append("  node_%d:" % ultimo_octeto)
         L.append("    ip: %s" % ip)
@@ -370,7 +378,10 @@ def emite(bus, grupos, orfaos, caminho, origem):
         if oferece:
             L.append("    provides: [%s]" % ", ".join("Service%04X" % s for s in sorted(oferece)))
         if consome:
-            L.append("    consumes: [%s]" % ", ".join("Service%04X" % s for s in consome))
+            L.append("    consumes:")
+            for servico in sorted(consome):
+                grupos = ", ".join("0x%04X" % g for g in consome[servico])
+                L.append("      - { service: Service%04X, eventgroups: [%s] }" % (servico, grupos))
         L.append("")
 
     with open(caminho, "w", encoding="utf-8", newline="\n") as fh:

@@ -23,8 +23,16 @@ import argparse
 import json
 import os
 import re
+import sys
 
 import yaml
+
+# O diretório deste script entra no sys.path explicitamente: com `python3 -I`,
+# que é como os degraus chamam os geradores, o interpretador NÃO o acrescenta
+# sozinho (o -I implica -P desde o 3.11), e um `import matrix_table` solto
+# falharia só ali, não no uso comum.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import matrix_table  # noqa: E402
 
 
 def hex16(v) -> str:
@@ -409,6 +417,15 @@ def main() -> None:
     n_ev = sum(len(s["events"]) for s in matrix["services"].values())
     print(f"  cabecalho C++  -> {os.path.basename(hpp_path)} "
           f"({n_svc} servicos, {n_ev} eventos, {len(matrix['nodes'])} nos)")
+
+    # Tabela de RUNTIME, para o no generico dirigido pela matriz. Fica num
+    # modulo a parte porque este arquivo ja e grande, e porque as duas saidas
+    # respondem a perguntas diferentes: identificadores em tempo de compilacao,
+    # e topologia percorrivel em tempo de execucao.
+    tab_path = os.path.join(os.path.dirname(os.path.abspath(hpp_path)), "CommMatrixTable.hpp")
+    with open(tab_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(matrix_table.tabela_lines(matrix, endpoints_de)))
+    print(f"  tabela runtime -> {os.path.basename(tab_path)}")
 
     # Lista de eventos de segurança configurados, que o ara::idsm resolve. Sai
     # da mesma fonte pelo mesmo motivo dos identificadores: o caminho do

@@ -91,14 +91,18 @@ nodes:
     app_id: 0x1002
     app_name: node-2
     role: consumidor
-    consumes: [Service1001, Service1002, Service1003]
+    consumes:
+      - { service: Service1001, eventgroups: [0x0001] }
+      - { service: Service1002, eventgroups: [0x0001] }
+      - { service: Service1003, eventgroups: [0x0001] }
 
   node_3:
     ip: 172.18.0.3
     app_id: 0x1003
     app_name: node-3
     role: consumidor
-    consumes: [Service1001]
+    consumes:
+      - { service: Service1001, eventgroups: [0x0003] }
 
   node_4:
     ip: 172.18.0.4
@@ -119,28 +123,35 @@ nodes:
     app_id: 0x1006
     app_name: node-6
     role: consumidor
-    consumes: [Service1002, Service1003]
+    consumes:
+      - { service: Service1002, eventgroups: [0x0002] }
+      - { service: Service1003, eventgroups: [0x0002] }
 
   node_7:
     ip: 172.18.0.7
     app_id: 0x1007
     app_name: node-7
     role: consumidor
-    consumes: [Service1001]
+    consumes:
+      - { service: Service1001, eventgroups: [0x0002] }
 
   node_8:
     ip: 172.18.0.8
     app_id: 0x1008
     app_name: node-8
     role: consumidor
-    consumes: [Service1002]
+    consumes:
+      - { service: Service1002, eventgroups: [0x0003] }
 
   node_9:
     ip: 172.18.0.9
     app_id: 0x1009
     app_name: node-9
     role: consumidor
-    consumes: [Service1001, Service1002, Service1003]
+    consumes:
+      - { service: Service1001, eventgroups: [0x0004] }
+      - { service: Service1002, eventgroups: [0x0004] }
+      - { service: Service1003, eventgroups: [0x0003] }
 
   node_10:
     ip: 172.18.0.10
