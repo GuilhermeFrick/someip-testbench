@@ -68,8 +68,13 @@ camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Ada
 | SOME/IP-SD entre containers | validado |
 | `libecu` (`Skeleton`/`Proxy`) e dois nós ECU trocando evento | **passou**, decodificado pelo dissector |
 | Sensor: fonte de pacotes, parser, modelo de bytes e extrator das 16 features | feito, com **paridade exata** contra o Python sobre o dataset inteiro |
-| Normalização, classificador, despacho de Security Event | a escrever |
-| CARLA alimentando os serviços; injeção de ataques | Fases 1 e 2 |
+| Normalização, dois motores de inferência, despacho de Security Event, cadeia completa | feito, **352 asserções** passando |
+| Artefatos do treino (modelo, limites min-max) | **pendência**: não versionados; hoje roda contra um modelo de prova |
+| Nó de sensor no barramento; CARLA alimentando os serviços; injeção de ataques | Fases 1 e 2 |
 
 O número que sustenta a cadeia de extração: **14 375 392 quadros, 14 233 354 vetores de features,
 0 divergências** contra o código Python que treinou o modelo, exato bit a bit.
+
+Os dois motores de inferência conferidos contra o `predict` do próprio XGBoost: pior diferença de
+**1,19e-07** (tabelas) e **4,47e-08** (C99 do TL2cgen), com a classe escolhida batendo em todas as
+linhas.

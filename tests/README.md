@@ -22,29 +22,37 @@ motivo e o que falta instalar.
 | `test_feature_streamer.cpp` | unitário | validação, `Reset`, isolamento das janelas e o **despejo** |
 | `test_libecu.cpp` | unitário | os **caminhos de erro** da fachada, que o handshake não toca |
 | `test_packet_source.cpp` | unitário | códigos de erro, fim de arquivo e o **registro truncado** (precisa de `libpcap-dev`) |
+| `test_normalizer.cpp` | unitário | a **feature degenerada** e a **ausência de saturação**, as duas coisas que o min-max "normalmente" faz e a referência não |
+| `test_event_dispatch.cpp` | unitário | serialização do contexto, validação do caminho do meta-modelo e **um reporter por classe** |
+| `test_classifier.cpp` | oráculo | os **dois motores** contra o `predict` do próprio XGBoost |
+| `test_sensor.cpp` | integração | a **contabilidade da cadeia**: descarte à parte, evento, relógio do cenário |
 | `test_comm_matrix.cpp` + `check_comm_matrix.py` | consistência | o cabeçalho gerado contra o YAML da matriz |
 | `test_parity_parser.cpp` + `gen_parser_vectors.py` | oráculo | **o parser campo a campo contra o `someip.parse` do Python** |
 | `test_parity_streamer.cpp` + `gen_parity_vectors.py` | oráculo | **as 16 features contra o extrator do Python** |
 | [`platform/node-handshake`](../platform/node-handshake/) | integração | dois nós trocando SOME/IP em containers |
 | [`platform/parity-dataset`](../platform/parity-dataset/) | oráculo, **dataset inteiro** | a cadeia de produção inteira sobre os 7 PCAPs reais |
 
-**251 asserções**, todas sob AddressSanitizer e UndefinedBehaviorSanitizer, mais o
-`test_comm_matrix` (21 identificadores conferidos contra o YAML pelo lado Python) e o
-`test_parity_streamer` (368 comparações). Por conjunto:
+**352 asserções** numa só invocação, todas sob AddressSanitizer e UndefinedBehaviorSanitizer (menos
+o `test_libecu`), mais o `test_comm_matrix` (21 identificadores conferidos contra o YAML pelo lado
+Python) e o `test_parity_streamer` (368 comparações). Por conjunto:
 
 | conjunto | asserções |
 |---|---:|
 | `test_ara_core` | 57 |
 | `test_sliding_window` | 45 |
-| `test_bytemodel` | 40 |
 | `test_feature_streamer` | 39 |
+| `test_bytemodel` | 38 |
+| `test_event_dispatch` | 37 |
 | `test_packet_source` | 29 |
+| `test_normalizer` | 28 |
 | `test_libecu` | 27 |
+| `test_sensor` | 21 |
+| `test_classifier` | 17 |
 | `test_parity_parser` | 14 |
 
 Duas asserções do `test_bytemodel` **não rodam como root**: a do `ArtefactUnreadable` depende de
 `chmod 0` barrar a leitura, e para root não barra. O teste imprime `(pulado: ... root?)` em vez de
-passar em falso, então dentro de container o total é 249.
+passar em falso, então fora de container o total é 354.
 
 ## O levantamento que deu origem aos unitários
 
@@ -70,6 +78,16 @@ comportamento, e ler o `enum` como lista de garantias estaria errado.
 | `MalformedPacket`, `ModelNotAvailable` | os `.cpp` que os produziriam não existem ainda. Marcados |
 
 Cada um deles carrega agora `NOT YET PRODUCED` no próprio enumerador, com o motivo.
+
+### Dois já foram fechados
+
+| código | como passou a ser produzido |
+|---|---|
+| `MalformedPacket` | o `SomeipParser` o devolve para quadro que não é IPv4, protocolo que não é TCP/UDP, e quadro curto demais para os cabeçalhos que declara |
+| `ModelNotAvailable` | o `Tl2cgenClassifier::Create` o devolve quando os **símbolos fracos** do C gerado resolvem para nulo, isto é, quando a build pulou o passo do TL2cgen. É o único lugar do projeto onde "a build está incompleta" é resposta de runtime em vez de erro de ligação, e o `test_classifier` verifica os dois lados: sem o C gerado dá `ModelNotAvailable`, com ele a forma do modelo é conferida e as predições batem |
+
+Seguem marcados `TrainingRunMismatch` (nenhuma verificação cruzada de artefatos existe),
+`SubscriptionTimeout` e `ServiceDiscoveryNotReady`.
 
 ## Casos que pegaram erro de verdade
 
@@ -123,6 +141,43 @@ e o teste acusa — mas o **AddressSanitizer não acusa**. O buffer do libpcap t
 `snaplen`, então os 1434 bytes a mais caem dentro da própria alocação dele e nenhuma ferramenta
 reclama: o que sai são bytes de lixo tratados como payload, calados. É exatamente o tipo de erro
 que a paridade sobre um dataset sem truncamento também não pegaria.
+
+## Os motores de inferência, e a ABI que eu não supus
+
+```bash
+bash experiments/bench-inference/make_probe.sh   # pré-requisito
+```
+
+O `Tl2cgenClassifier` tem de declarar a `union Entry` e a assinatura de `predict` por conta
+própria, para compilar com ou sem o passo do TL2cgen. **Errar o layout dessa união não dá erro de
+compilação, dá corrupção silenciosa dos valores das features.** Então a ABI foi lida de um
+`header.h` real, gerado rodando o TL2cgen sobre um modelo de prova da mesma forma do adotado:
+
+```c
+union Entry { int missing; float fvalue; int qvalue; };
+void predict(union Entry *data, int pred_margin, float *result);
+int32_t get_num_feature(void);
+void get_num_class(int32_t *out);        /* escreve por ponteiro, NÃO retorna */
+```
+
+⚠️ **Duas dessas eu teria errado supondo, e nenhuma das duas falharia na compilação:** a união tem
+**três** membros, não dois (um palpite de dois membros tem o mesmo tamanho e alinhamento, então
+seria compatível por acidente), e `get_num_class` parece que deveria devolver a resposta.
+
+**Resultado, contra o `predict` do próprio XGBoost sobre 256 linhas:**
+
+| motor | pior diferença de probabilidade | classe escolhida |
+|---|---:|---|
+| avaliador compacto (tabelas) | 1,19e-07 | bate em todas |
+| C99 do TL2cgen | 4,47e-08 | bate em todas |
+
+Não é paridade bit a bit, e nem deveria ser: a ordem das somas de margem dentro do XGBoost não é a
+mesma e os três somam em `float`. O que tem de bater exatamente é a **decisão**, e bate.
+
+⚠️ **O que este teste NÃO cobre:** o modelo de prova tem `base_score` **escalar** (0,5 expandido
+para as 5 classes). O modelo adotado tem `base_score` em **vetor por classe**, que é o caso que não
+cancela no softmax — e foi justamente o confronto entre os dois motores que revelou isso. Quando o
+modelo real voltar a estar disponível, é com ele que este teste tem de rodar.
 
 ## O teste de paridade do parser
 

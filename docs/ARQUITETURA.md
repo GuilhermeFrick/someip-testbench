@@ -279,10 +279,10 @@ modelo de árvores**. São quatro artefatos cruzando a fronteira:
 
 | Artefato | Como atravessa | Estado |
 |---|---|---|
-| Modelo de árvores | TL2cgen gera C99 no build | resolvido |
+| Modelo de árvores | TL2cgen gera C99 no build | código pronto e conferido; **falta o artefato do modelo adotado**, que não está versionado |
 | **Extrator das 16 features** | **código C++ novo** | **feito, com paridade exata sobre o dataset** |
 | *Byte-models* (log-probabilidade por camada) | dado embarcado | formato definido e lido pelo `ByteModels::Create`; hoje quem exporta são os geradores de teste (`tests/gen_parity_*.py`), não o pipeline de treino |
-| Normalização (`xmin`/`xmax` do treino) | dado embarcado | a exportar |
+| Normalização (`xmin`/`xmax` do treino) | dado embarcado | formato definido, lido pelo `Normalizer::Create`, exportador em `tools/export_minmax.py` |
 
 A paridade do extrator foi medida sobre os 7 PCAPs: **14 375 392 quadros, 14 233 354 vetores, 0
 divergências**. Ver [`platform/parity-dataset`](../platform/parity-dataset/README.md).

@@ -68,6 +68,35 @@ Cerca de **200×**, com os dois lados pagando a sua própria escrita e leitura d
 registros de referência. Isso dá 0,44 µs por quadro, que é um **teto** e não uma medida da cadeia:
 o número inclui ler e comparar os registros. A medida limpa, por pacote, é a do banco de latência.
 
+### 3. Os limites min-max são fixados por casos únicos
+
+Com os 14,2 M vetores no disco dá para medir os limites de normalização que o treino usa
+(`tools/export_minmax.py --from-records`). Duas coisas aparecem:
+
+**`ip_time_interval` tem mínimo NEGATIVO: −0,00289511681 s.** São **7 pacotes em 14 233 354**
+(0,00005%), todos em arquivos de ataque — a captura tem timestamps fora de ordem dentro de um mesmo
+fluxo, e `iat = p.ts - st["ts"]` fica negativo. O máximo é **1481 s**, um intervalo de silêncio.
+
+Ou seja: a faixa inteira dessa feature é definida por **um punhado de pacotes isolados nas duas
+pontas**, e depois da normalização praticamente todo o tráfego real se comprime perto de zero. Não
+é defeito a corrigir — é como o modelo foi treinado, e mudar isso invalidaria o modelo. É uma
+observação sobre a fragilidade do min-max calculado sobre o dataset todo.
+
+| | 7 pacotes com intervalo negativo |
+|---|---:|
+| `dos_noti_flood` | 1 |
+| `fuzzy_sd_offer_rand_noti(2)` | 3 |
+| `mitm_multi_attacker` | 1 |
+| `mitm_single_attacker` | 2 |
+
+**As três log-verossimilhanças têm máximo exatamente 0**, e as três entropias têm mínimo 0, porque
+a referência devolve `0.0` para payload vazio em vez de um valor calculado. O zero acumula dois
+significados: "vazio" e um valor de fronteira legítimo.
+
+**Nenhuma das 16 features é degenerada** (`xmax == xmin`) neste dataset. O `Normalizer` reproduz a
+regra `where(xmax > xmin, xmax-xmin, 1.0)` da referência de todo modo, mas aqui ela é defensiva e
+não entra em jogo.
+
 ## Como a comparação é feita
 
 O lado Python grava um registro por vetor emitido: `uint32` com o **índice do pacote** mais as 16

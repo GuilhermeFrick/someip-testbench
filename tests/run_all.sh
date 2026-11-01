@@ -36,6 +36,14 @@ roda() {
 
 SENSOR="src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp src/ids_sensor/IdsSensorErrorDomain.cpp src/util/UtilErrorDomain.cpp"
 PARSER="src/ids_sensor/SomeipParser.cpp src/ids_sensor/IdsSensorErrorDomain.cpp"
+ARA="src/ara/idsm/EventReporter.cpp src/ara/core/InstanceSpecifier.cpp src/ara/core/CoreErrorDomain.cpp"
+# A cadeia inteira, para o test_sensor. Precisa do libpcap pelo PacketSource.
+CADEIA="src/ids_sensor/Sensor.cpp src/ids_sensor/Classifier.cpp src/ids_sensor/Normalizer.cpp \
+        src/ids_sensor/SomeipParser.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp \
+        src/ids_sensor/PacketSource.cpp src/ids_sensor/SecurityEventDispatcher.cpp \
+        src/ids_sensor/IdsSensorErrorDomain.cpp src/util/UtilErrorDomain.cpp $ARA"
+# Tabelas do modelo de PROVA, geradas por experiments/bench-inference/make_probe.sh.
+PROBE="${PROBE:-build/probe}"
 
 # ---------------------------------------------------------------- sem vsomeip
 ARGS=()
@@ -45,6 +53,10 @@ roda test_sliding_window  tests/test_sliding_window.cpp src/util/UtilErrorDomain
 roda test_ara_core        tests/test_ara_core.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/IdsSensorErrorDomain.cpp
 roda test_bytemodel       tests/test_bytemodel.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/IdsSensorErrorDomain.cpp
 roda test_feature_streamer tests/test_feature_streamer.cpp $SENSOR
+roda test_normalizer      tests/test_normalizer.cpp src/ids_sensor/Normalizer.cpp \
+                          src/ids_sensor/IdsSensorErrorDomain.cpp
+roda test_event_dispatch  tests/test_event_dispatch.cpp src/ids_sensor/SecurityEventDispatcher.cpp \
+                          src/ids_sensor/IdsSensorErrorDomain.cpp $ARA
 
 # ------------------------------------------------- precisa do libpcap
 # O libpcap-dev esta nas DUAS imagens: na someip-base, porque o no de sensor vai
@@ -58,6 +70,29 @@ if [ -f /usr/include/pcap.h ] || [ -f /usr/include/pcap/pcap.h ]; then
 else
     echo "  PULADO: libpcap-dev ausente no host. Rode dentro da imagem da bancada:"
     echo "    docker run --rm -v \"\$PWD\":/w -w /w $IMG bash tests/run_all.sh"
+fi
+
+# ------------------------------------- motores e cadeia (modelo de PROVA)
+# As tabelas vem do modelo de prova, treinado em dados aleatorios: o que importa
+# dele e a FORMA (16 features, 5 classes), que e o que determina a travessia, o
+# layout e a ABI. O modelo real nao esta versionado.
+printf '\n######## test_classifier ########\n'
+if [ -f "$PROBE/tables.bin" ] && [ -f "$PROBE/probe_rows.f32" ] && [ -f "$PROBE/probe_probs.txt" ]; then
+    ARGS=("$PROBE/tables.bin" "$PROBE/probe_rows.f32" "$PROBE/probe_probs.txt")
+    roda test_classifier tests/test_classifier.cpp src/ids_sensor/Classifier.cpp \
+         src/ids_sensor/IdsSensorErrorDomain.cpp
+else
+    echo "  PULADO: rode antes  bash experiments/bench-inference/make_probe.sh"
+fi
+
+printf '\n######## test_sensor ########\n'
+if [ ! -f "$PROBE/tables.bin" ]; then
+    echo "  PULADO: rode antes  bash experiments/bench-inference/make_probe.sh"
+elif [ -f /usr/include/pcap.h ] || [ -f /usr/include/pcap/pcap.h ]; then
+    ARGS=("$PROBE/tables.bin")
+    roda test_sensor tests/test_sensor.cpp $CADEIA -lpcap
+else
+    echo "  PULADO: libpcap-dev ausente no host (o PacketSource entra na ligacao da cadeia)."
 fi
 
 # ---------------------------------------------------- cabecalho gerado

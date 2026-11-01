@@ -49,7 +49,7 @@
  * }
  *
  * const ids::StreamerConfig cfg;
- * auto streamer = ids::FeatureStreamer::Create(models.Value(), cfg);
+ * auto streamer = ids::FeatureStreamer::Create(*models.Value(), cfg);
  * auto clf      = ids::Tl2cgenClassifier::Create();
  * auto sink     = ids::IdsmDispatcher::Create("ids_sensor/SecurityEvents");
  * auto source   = ids::PcapSource::Create("captures/benign.pcap");
@@ -132,11 +132,17 @@ class Sensor final
     void OnFrame(const Frame &frame);
 
     /**
-     * @brief Consume a source until the end of its stream.
+     * @brief Consume a source until it stops yielding frames.
      * @param[in] source Packet source to drain.
      * @return None.
-     * @details The SAME function serves PCAP replay and live capture, because the source is an
-     *          interface.
+     * @warning THIS IS THE REPLAY LOOP, and it is not the live one. It stops at the first empty
+     *          Optional, which for ::ids::PcapSource means the end of the file and for
+     *          ::ids::LiveSource means only that nothing arrived within the read timeout. On a
+     *          quiet bus this would therefore return immediately, having processed nothing. The
+     *          stages themselves are indifferent — a live node drives them through OnFrame() from
+     *          its own loop, which distinguishes "no frame yet" from "stop", and that loop also
+     *          owns the shutdown condition that a drain-until-empty cannot have. An earlier version
+     *          of this comment claimed one function served both; it does not.
      */
     void Run(IPacketSource &source);
 

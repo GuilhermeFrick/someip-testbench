@@ -77,10 +77,16 @@ class Tl2cgenClassifier final : public IClassifier
   public:
     /**
      * @brief Bind to the model compiled into this build.
-     * @return The engine, or an error when this build carries no model.
+     * @return The engine, or an error when this build carries no usable model.
      * @retval ::ids::IdsSensorErrc::ModelNotAvailable No generated model is linked in, which
      *                                                happens when the build skipped the TL2cgen
      *                                                step.
+     * @retval ::ids::IdsSensorErrc::InvalidConfiguration A model IS linked in, but its shape does
+     *                                                not match this build: a different number of
+     *                                                features or of classes. Reported rather than
+     *                                                trusted, because the generated code would
+     *                                                otherwise read past the feature array or
+     *                                                write past the probability vector.
      * @details Returns a smart pointer, per section 8.2 of the C++ code standard.
      */
     static ara::core::Result<std::unique_ptr<Tl2cgenClassifier>> Create();

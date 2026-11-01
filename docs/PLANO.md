@@ -159,7 +159,14 @@ está provado. Era o **sensor em C++**, porque a paridade com o Python se ganha 
 | `FeatureStreamer.cpp` — o único estágio com estado | feito |
 | `SomeipParser.cpp` — Ethernet → IP → TCP/UDP → SOME/IP → SD | feito |
 | `PacketSource.cpp` — replay de PCAP e captura viva, sobre libpcap | feito |
-| `Normalizer.cpp`, `Classifier.cpp`, `SecurityEventDispatcher.cpp`, `Sensor.cpp` | a escrever |
+| `Normalizer.cpp` — limites min-max do treino | feito |
+| `Classifier.cpp` — TL2cgen e o avaliador compacto | feito, os dois conferidos contra o XGBoost |
+| `SecurityEventDispatcher.cpp` — um reporter `ara::idsm` por classe | feito |
+| `Sensor.cpp` — a cadeia e a decomposição de custo | feito |
+
+**Os quatro estágios restantes foram fechados em 01/11, e com eles o `src/ara` ganhou
+implementação** (`InstanceSpecifier`, `CoreErrorDomain`, `EventReporter`). O `ids_sensor` tem hoje
+**nove `.cpp`** e nenhum cabeçalho sem implementação.
 
 **Critério de pronto atendido, e com margem:** a cadeia de produção inteira
 (`PcapSource → SomeipParser → FeatureStreamer`) foi rodada sobre os 7 PCAPs do dataset e comparada
@@ -176,7 +183,19 @@ Dois achados que só uma rodada desse tamanho dava:
 
 ## Próximo passo imediato
 
-Fechar os quatro `.cpp` que faltam, na ordem em que o sensor os atravessa: `Normalizer`,
-`Classifier`, `SecurityEventDispatcher` e `Sensor`. O `Classifier` é o que traz a decisão sobre o
-motor de inferência (TL2cgen, conforme a linha de decisão na [ARQUITETURA](ARQUITETURA.md)) e é o
-que liga esta bancada ao resultado de latência já medido.
+O componente está completo e testado, mas **falta o artefato que o torna o IDS de verdade: o
+modelo treinado.** O `model_16.json` e o `minmax.npy` da rodada de treino não estão versionados em
+nenhum repositório e estavam só na VM, que foi desligada. Hoje o `Classifier` roda contra um
+**modelo de prova** treinado em dados aleatórios, que valida travessia, ABI e layout — mas não é o
+modelo adotado.
+
+Duas frentes, nesta ordem:
+
+1. **Recuperar ou regerar os artefatos de treino**, e versioná-los junto do repositório de
+   reprodução. Os 14,2 M vetores de features já estão no disco da bancada, então falta o rótulo
+   por pacote para retreinar. É também o que fecha o `TrainingRunMismatch`, o último código de erro
+   declarado que nada produz: ele exige uma marca de rodada nos três artefatos.
+2. **O nó de sensor** (`src/nodes/`), que é o `Sensor` dentro de um executável com `LiveSource` no
+   barramento — e aí o `libpcap-dev` na imagem da bancada, que já foi acrescentado, passa a ser
+   usado para o que motivou acrescentá-lo. Atenção ao achado do `sd-smoke`: um monitor passivo em
+   container separado **não vê o multicast**, então o nó precisa entrar nos grupos IGMP.
