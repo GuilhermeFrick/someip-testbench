@@ -48,6 +48,33 @@ def sd_block(net: dict) -> dict:
     }
 
 
+def endpoints_de(svc: dict) -> dict:
+    """Endpoints do serviço, por protocolo, a partir da matriz.
+
+    Dois formatos são aceitos, e isso não é cortesia: a matriz escrita à mão
+    declara uma porta só, enquanto a RECUPERADA de uma captura
+    (tools/extract_matrix.py) traz a lista que a oferta de SD anuncia -- nas
+    capturas do baseline, cada serviço anuncia DOIS endpoints, um TCP e um UDP.
+
+        port: 30509                         # forma curta; protocol default udp
+        endpoints:                          # forma completa
+          - { protocol: tcp, port: 30501 }
+          - { protocol: udp, port: 31097 }
+
+    Devolve {"tcp": porta, "udp": porta}, com as chaves que existirem.
+    """
+    saida = {}
+    for ep in (svc.get("endpoints") or []):
+        proto = str(ep.get("protocol", "udp")).lower()
+        if proto in ("tcp", "udp"):
+            saida[proto] = int(ep["port"])
+    if not saida and ("port" in svc):
+        saida[str(svc.get("protocol", "udp")).lower()] = int(svc["port"])
+    if not saida:
+        raise SystemExit("servico 0x%04X sem porta nenhuma na matriz" % svc["id"])
+    return saida
+
+
 def service_block(svc: dict) -> dict:
     """Traduz um serviço da matriz para o formato do vsomeip."""
     by_name = {e["name"]: e for e in svc["events"]}
@@ -58,7 +85,10 @@ def service_block(svc: dict) -> dict:
         if e.get("is_field"):
             ev["is_field"] = "true"
         if "cycle_ms" in e:
-            ev["update-cycle"] = e["cycle_ms"]
+            # O vsomeip quer milissegundos INTEIROS. A matriz recuperada traz a
+            # mediana medida na captura, que vem com decimal (10,1 ms), e passar
+            # o float adiante faria o vsomeip ler um ciclo que nao existe.
+            ev["update-cycle"] = int(round(float(e["cycle_ms"])))
         events.append(ev)
 
     groups = []
@@ -76,13 +106,22 @@ def service_block(svc: dict) -> dict:
                 grp["threshold"] = str(m["threshold"])
         groups.append(grp)
 
-    return {
+    bloco = {
         "service": hex16(svc["id"]),
         "instance": hex16(svc["instance"]),
-        "unreliable": str(svc["port"]),
         "events": events,
         "eventgroups": groups,
     }
+    eps = endpoints_de(svc)
+    if "udp" in eps:
+        bloco["unreliable"] = str(eps["udp"])
+    if "tcp" in eps:
+        # O formato do vsomeip para TCP e um objeto, nao uma porta solta. Os
+        # magic cookies ficam DESLIGADOS: eles inserem mensagens de sincronismo
+        # no fluxo, e num barramento que se quer reproduzir isso seria trafego
+        # que o original nao tem.
+        bloco["reliable"] = {"port": str(eps["tcp"]), "enable-magic-cookies": "false"}
+    return bloco
 
 
 def pascal(name: str) -> str:
@@ -237,7 +276,18 @@ def hpp_lines(matrix: dict) -> list:
         L.append("{")
         fn("::ids::ecu::ServiceId", "Id", "0x%04XU" % svc["id"], "Service identifier.")
         fn("::ids::ecu::InstanceId", "Instance", "0x%04XU" % svc["instance"], "Instance identifier.")
-        fn("::ids::ecu::Port", "UdpPort", "%dU" % svc["port"], "UDP port the service is offered on.")
+        eps = endpoints_de(svc)
+        # Uma funcao por transporte, e so para o que a matriz declara. Um servico
+        # so de TCP nao ganha um UdpPort() devolvendo zero: a ausencia tem de ser
+        # erro de compilacao no consumidor, nao uma porta invalida em silencio.
+        if "udp" in eps:
+            fn("::ids::ecu::Port", "UdpPort", "%dU" % eps["udp"], "UDP port the service is offered on.")
+        if "tcp" in eps:
+            fn("::ids::ecu::Port", "TcpPort", "%dU" % eps["tcp"], "TCP port the service is offered on.")
+        fn("bool", "HasUdp", "true" if "udp" in eps else "false",
+           "Whether the matrix declares an unreliable endpoint.")
+        fn("bool", "HasTcp", "true" if "tcp" in eps else "false",
+           "Whether the matrix declares a reliable endpoint.")
         L.append("    /**")
         L.append("     * @brief Events the service offers.")
         L.append("     */")
@@ -245,7 +295,7 @@ def hpp_lines(matrix: dict) -> list:
         L.append("    {")
         for e in svc["events"]:
             campo = "Field" if e.get("is_field") else "Event"
-            ciclo = (", %d ms cycle" % e["cycle_ms"]) if e.get("cycle_ms") else ""
+            ciclo = (", %g ms cycle" % float(e["cycle_ms"])) if e.get("cycle_ms") else ""
             L.append("        /**")
             L.append("         * @brief %s%s." % (campo, ciclo))
             L.append("         * @return 0x%04XU" % e["id"])

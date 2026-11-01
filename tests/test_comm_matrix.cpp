@@ -46,6 +46,7 @@ int main()
     using ids::matrix::GnssEcu;
     using ids::matrix::GnssService;
     using ids::matrix::HmiEcu;
+    using ids::matrix::IdsSensor;
     using ids::matrix::Network;
 
     /* --- rede --- */
@@ -78,6 +79,15 @@ int main()
     std::printf("node.hmi_ecu.app_name=%s\n", HmiEcu::AppName());
     std::printf("node.hmi_ecu.ip=%s\n", HmiEcu::Ip());
     std::printf("node.hmi_ecu.app_id=%u\n", static_cast<unsigned>(HmiEcu::AppId()));
+    /* O no monitor. Foi a ausencia DELE aqui que o check_comm_matrix.py acusou
+     * quando ele entrou na matriz: o round-trip exige que todo no do YAML
+     * apareca no cabecalho gerado E seja exercitado por este teste.
+     * Acrescentar um no a matriz e esquecer esta linha e exatamente o que ele
+     * existe para pegar. */
+    std::printf("node.ids_sensor.name=%s\n", IdsSensor::Name());
+    std::printf("node.ids_sensor.app_name=%s\n", IdsSensor::AppName());
+    std::printf("node.ids_sensor.ip=%s\n", IdsSensor::Ip());
+    std::printf("node.ids_sensor.app_id=%u\n", static_cast<unsigned>(IdsSensor::AppId()));
 
     /* --- a prova de ODR: se isto ligar, a ressalva do C++14 nao morde --- */
     std::printf("odr.service_id_por_referencia=%u\n", static_cast<unsigned>(PorReferencia(GnssService::Id())));
