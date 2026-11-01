@@ -118,6 +118,8 @@ def hpp_lines(matrix: dict) -> list:
     L.append(" */")
     L.append("#pragma once")
     L.append("")
+    L.append("#include <cstddef>")
+    L.append("")
     L.append('#include "src/libecu/Types.hpp"')
     L.append("")
     L.append("/** @addtogroup LibEcuCommMatrix Communication matrix identifiers")
@@ -156,6 +158,73 @@ def hpp_lines(matrix: dict) -> list:
        "Route each node adds before starting the stack; without it vsomeip never enables SD.")
     fn("const char *", "SdMulticast", '"%s"' % sd["multicast"], "Multicast group of the Service Discovery.")
     fn("::ids::ecu::Port", "SdPort", "%dU" % sd["port"], "Port of the Service Discovery.")
+    L.append("};")
+    L.append("")
+
+    # ---------------- grupos multicast, como VALORES
+    #
+    # Nao basta citar os enderecos num comentario: o no monitor precisa ENTRAR
+    # nestes grupos por IGMP, senao a bridge do Docker nao lhe entrega o
+    # multicast e ele captura zero pacote de Service Discovery, sem erro nenhum.
+    # Ver platform/sd-smoke. Entao eles saem daqui como valores, da mesma fonte
+    # que configura a pilha.
+    grupos_mc = [(sd["multicast"], int(sd["port"]), "Service Discovery")]
+    for nome_svc, svc in matrix["services"].items():
+        for g in (svc.get("eventgroups") or []):
+            if "multicast" in g:
+                m = g["multicast"]
+                par = (m["address"], int(m["port"]))
+                if par not in [(a, p) for a, p, _ in grupos_mc]:
+                    grupos_mc.append((par[0], par[1],
+                                      "eventgroup 0x%04X of %s" % (g["id"], nome_svc)))
+
+    L.append("/**")
+    L.append(" * @brief Multicast groups a passive monitor must JOIN to see the bus.")
+    L.append(" * @details The Docker bridge only delivers multicast to whoever joined the group over")
+    L.append(" *          IGMP. A monitor that does not join captures zero Service Discovery packets,")
+    L.append(" *          with no error to show for it. See platform/sd-smoke/README.md.")
+    L.append(" */")
+    L.append("struct MulticastGroups final")
+    L.append("{")
+    fn("::std::size_t", "Count", "%dU" % len(grupos_mc), "How many groups there are to join.")
+    L.append("    /**")
+    L.append("     * @brief Address of one group.")
+    L.append("     * @param[in] index Group index, below Count().")
+    L.append("     * @return Dotted address, or an empty string when the index is out of range.")
+    L.append("     */")
+    L.append("    static constexpr const char *Address(::std::size_t index) noexcept")
+    L.append("    {")
+    expr = '""'
+    for i, (addr, _porta, _doc) in reversed(list(enumerate(grupos_mc))):
+        expr = '(index == %dU) ? "%s" : %s' % (i, addr, expr)
+    L.append("        return %s;" % expr)
+    L.append("    }")
+    L.append("")
+    L.append("    /**")
+    L.append("     * @brief Port of one group.")
+    L.append("     * @param[in] index Group index, below Count().")
+    L.append("     * @return The port, or zero when the index is out of range.")
+    L.append("     */")
+    L.append("    static constexpr ::ids::ecu::Port Port(::std::size_t index) noexcept")
+    L.append("    {")
+    expr = "0U"
+    for i, (_addr, porta, _doc) in reversed(list(enumerate(grupos_mc))):
+        expr = "(index == %dU) ? %dU : %s" % (i, porta, expr)
+    L.append("        return %s;" % expr)
+    L.append("    }")
+    L.append("")
+    L.append("    /**")
+    L.append("     * @brief What each group carries, for diagnostics.")
+    L.append("     * @param[in] index Group index, below Count().")
+    L.append("     * @return Short description, or an empty string when the index is out of range.")
+    L.append("     */")
+    L.append("    static constexpr const char *Purpose(::std::size_t index) noexcept")
+    L.append("    {")
+    expr = '""'
+    for i, (_addr, _porta, doc) in reversed(list(enumerate(grupos_mc))):
+        expr = '(index == %dU) ? "%s" : %s' % (i, doc, expr)
+    L.append("        return %s;" % expr)
+    L.append("    }")
     L.append("};")
     L.append("")
 
@@ -290,6 +359,23 @@ def main() -> None:
     n_ev = sum(len(s["events"]) for s in matrix["services"].values())
     print(f"  cabecalho C++  -> {os.path.basename(hpp_path)} "
           f"({n_svc} servicos, {n_ev} eventos, {len(matrix['nodes'])} nos)")
+
+    # Lista de eventos de segurança configurados, que o ara::idsm resolve. Sai
+    # da mesma fonte pelo mesmo motivo dos identificadores: o caminho do
+    # meta-modelo é configuração, não literal no código.
+    sec = matrix.get("security_events")
+    if sec:
+        prefixo = sec["port_prefix"]
+        idsm_path = os.path.join(a.out, "idsm-events.txt")
+        with open(idsm_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("# NAO EDITE. Gerado de platform/comm_matrix.yaml por tools/gen_config.py.\n")
+            fh.write("# Lido pelo ara::idsm::EventReporter via ARA_IDSM_CONFIGURATION.\n")
+            fh.write("# Um caminho de meta-modelo por linha; um evento ausente faz o\n")
+            fh.write("# IdsmDispatcher::Create falhar na subida, que e o desfecho desejado.\n")
+            for ev in sec["events"]:
+                fh.write(f"{prefixo}/{ev['name']}\n")
+        print(f"  eventos do IdsM -> {os.path.basename(idsm_path)} "
+              f"({len(sec['events'])} eventos sob {prefixo})")
 
     print(f"\n[ok] {os.path.abspath(a.out)}")
 

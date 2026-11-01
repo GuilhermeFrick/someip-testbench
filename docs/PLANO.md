@@ -193,20 +193,38 @@ As datas dos artefatos **não eram da mesma rodada**, e isso foi verificado em v
 `bytemodels.npz` fica dentro de 1 ULP. Ver [ARTEFATOS](ARTEFATOS.md), que também registra o defeito
 de versão do xgboost que quase embarcou um `base_score` errado em silêncio.
 
+## ✅ O sensor está no barramento (01/11)
+
+O `ids_sensor_node` captura, classifica com o modelo adotado e reporta ao IdsM, em
+[`platform/sensor-live`](../platform/sensor-live/README.md). Ele entra nos grupos multicast que a
+matriz declara, e a lista de eventos de segurança também passou a sair da matriz — trocar um nome
+no YAML e esquecer o código faz o `Create` **falhar na subida**, que é o desfecho desejado.
+
+🔴 **E ele produziu o achado que justifica a Fase 1.** Sobre tráfego **benigno**, o sensor levanta
+cerca de 30 eventos em 44 pacotes, com confiança mediana de **0,52**. Metade vem de ruído da bridge
+que **não é SOME/IP** (o parser aceita qualquer payload UDP de 16+ bytes, fielmente à referência) e
+metade são os **nossos próprios anúncios de Service Discovery**, cujos identificadores não estão no
+vocabulário em que os modelos de bytes foram ajustados.
+
+**O modelo não transfere para outro barramento sem recalibração.** Não é defeito: no dataset dele o
+macro-F1 é 0,9689. É o resultado que só aparece encostando o IDS num barramento de verdade, e é
+exatamente o que a Fase 1 existe para resolver — tráfego benigno ancorado no CARLA, gerado *neste*
+barramento, para reajustar modelos de bytes e limites.
+
 ## Próximo passo imediato
 
-**O nó de sensor** (`src/nodes/`): o `Sensor` dentro de um executável, com `LiveSource` capturando
-no barramento. É aí que o `libpcap-dev` acrescentado à imagem da bancada passa a ser usado para o
-que motivou acrescentá-lo.
+**Fase 1: o tráfego benigno ancorado no CARLA.** Os nós restantes (`imu_ecu`, `lidar_ecu`,
+`adas_ecu`) e o `scenario/carla_feeder.py` pela rede `ctrl`, separada da `bus`. O critério de
+pronto continua sendo um PCAP benigno de alguns minutos em que o padrão temporal acompanha a
+condução.
 
-Dois pontos de atenção já conhecidos:
+Com esse PCAP em mãos abre-se o caminho que o degrau do sensor apontou: **reajustar os modelos de
+bytes e os limites de normalização sobre o barramento da bancada**, e medir de novo a taxa de falso
+positivo. Esse par de números, antes e depois, é um resultado publicável.
 
-- o achado do `sd-smoke`: um monitor passivo em container separado **não vê o multicast**, porque a
-  bridge só entrega a quem entrou no grupo por IGMP. O nó precisa entrar nos grupos;
-- o `Sensor::Run` é o laço de **replay**, não o de captura viva. Um nó vivo dirige os estágios por
-  `OnFrame()` do seu próprio laço, que distingue "ainda não chegou nada" de "pare" e é quem tem a
-  condição de parada.
+Pendências de fundo, que não bloqueiam:
 
-Pendência de fundo, que não bloqueia: o **`TrainingRunMismatch` segue sem produtor**. Fechá-lo
-exige uma marca de rodada nos três artefatos; hoje a consistência foi verificada à mão, uma vez, e
-não é verificável em runtime.
+- o **`TrainingRunMismatch` segue sem produtor**. Fechá-lo exige uma marca de rodada nos três
+  artefatos; hoje a consistência foi verificada à mão, uma vez, e não é verificável em runtime;
+- o `run.sh` do sensor não linka o C99 do TL2cgen ao nó, então ele roda com o avaliador compacto.
+  O nó prefere o gerado quando presente e diz qual está usando.

@@ -49,6 +49,8 @@ camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Ada
 - [`platform/node-handshake`](platform/node-handshake/README.md) — dois nós nossos trocando SOME/IP
 - [`platform/parity-dataset`](platform/parity-dataset/README.md) — a extração em C++ contra o Python,
   sobre os 14,4 M pacotes do dataset
+- [`platform/sensor-live`](platform/sensor-live/README.md) — o sensor capturando o barramento, e o
+  que ele revelou sobre a transferência do modelo
 
 ## Repos relacionados
 
@@ -71,7 +73,8 @@ camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Ada
 | Sensor: fonte de pacotes, parser, modelo de bytes e extrator das 16 features | feito, com **paridade exata** contra o Python sobre o dataset inteiro |
 | Normalização, dois motores de inferência, despacho de Security Event, cadeia completa | feito, **352 asserções** passando |
 | Artefatos do treino (modelo, modelos de bytes, limites) | recuperados e **verificados**: `minmax` idêntico bit a bit ao recálculo, `bytemodels` dentro de 1 ULP |
-| Nó de sensor no barramento; CARLA alimentando os serviços; injeção de ataques | Fases 1 e 2 |
+| Nó de sensor capturando o barramento e reportando ao IdsM | feito, em [`platform/sensor-live`](platform/sensor-live/README.md) |
+| CARLA alimentando os serviços; injeção de ataques | Fases 1 e 2 |
 
 O número que sustenta a cadeia de extração: **14 375 392 quadros, 14 233 354 vetores de features,
 0 divergências** contra o código Python que treinou o modelo, exato bit a bit.
@@ -79,3 +82,8 @@ O número que sustenta a cadeia de extração: **14 375 392 quadros, 14 233 354 
 Os dois motores de inferência conferidos contra o `predict` do próprio XGBoost **com o modelo
 adotado**, em 2048 linhas reais do dataset: pior diferença de **2,38e-07** (tabelas) e **2,09e-07**
 (C99 do TL2cgen), com a classe escolhida batendo em todas.
+
+🔴 **E o primeiro resultado da bancada como instrumento:** com o sensor ligado a um barramento de
+verdade, o IDS treinado no dataset do Kim levanta ~30 eventos sobre tráfego **benigno**, com
+confiança mediana de 0,52. **Ele não transfere sem recalibração** — que é precisamente o que esta
+bancada existe para medir. Ver [`platform/sensor-live`](platform/sensor-live/README.md).

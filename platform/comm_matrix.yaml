@@ -60,3 +60,35 @@ nodes:
     app_name: client-sample
     role: consumidor
     consumes: [GnssService]
+
+  # O sensor de intrusão. Não oferece nem consome serviço: ele CAPTURA o
+  # barramento. Por isso não tem `provides` nem `consumes`, e a configuração
+  # vsomeip dele existe só para o caso de ele vir a reportar por SOME/IP;
+  # a captura em si é libpcap, fora da pilha.
+  #
+  # ⚠️ Ele precisa ENTRAR NOS GRUPOS multicast para ver o Service Discovery. A
+  # bridge do Docker só entrega multicast a quem entrou por IGMP, e um monitor
+  # passivo em container separado NÃO entra sozinho. Ver platform/sd-smoke.
+  ids_sensor:
+    ip: 172.30.0.20
+    app_id: 0x1400
+    app_name: ids-sensor
+    role: monitor
+    observes: [GnssService]
+
+# Eventos de segurança que o sensor reporta ao IdsM. Ficam aqui, e não no
+# código, pelo mesmo motivo que os identificadores de serviço: o caminho do
+# meta-modelo é configuração, e o `ara::idsm::EventReporter` resolve contra a
+# lista que o gerador escreve. Trocar um nome aqui e esquecer o código faz o
+# `Create` FALHAR na subida, que é o desfecho desejado — melhor do que um
+# reporter ligado ao evento errado.
+#
+# A ordem é a de ids::TrafficClass, menos a classe benigna, que não levanta
+# evento.
+security_events:
+  port_prefix: ids_sensor/SecurityEvents
+  events:
+    - { class: Dos,        name: DenialOfService }
+    - { class: Fuzzy,      name: MalformedPayload }
+    - { class: MitmSingle, name: ManInTheMiddleSingle }
+    - { class: MitmMulti,  name: ManInTheMiddleMulti }
