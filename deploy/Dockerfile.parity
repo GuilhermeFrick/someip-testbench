@@ -1,0 +1,38 @@
+# Imagem da rodada de paridade: os DOIS lados da comparacao, na mesma imagem.
+#
+# Deliberadamente SEM vsomeip. A cadeia que esta rodada exercita e
+# PcapSource -> SomeipParser -> FeatureStreamer, que nao toca a pilha SOME/IP; a
+# imagem base da bancada leva uns dez minutos para compilar o vsomeip, e nao faz
+# sentido pagar isso para ler PCAP. Quando existir um no de sensor que capture no
+# barramento, o libpcap-dev passa a ser necessario tambem na Dockerfile.vsomeip.
+#
+# Versoes fixas em vez de "a mais recente", pelo mesmo motivo da tag fixa do
+# vsomeip: a rodada precisa poder ser repetida.
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpcap-dev \
+        python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# scapy pelo RawPcapReader, que e como o codigo de referencia le as capturas;
+# numpy pelas tabelas do modelo de bytes. Sao as duas unicas dependencias dos
+# modulos de referencia que esta rodada importa.
+#
+# PyYAML nao e da paridade: e do tools/gen_config.py. Esta aqui porque e nesta
+# imagem que o tests/run_all.sh roda por inteiro, e sem ele o test_comm_matrix
+# aparece como PULADO por falta de um pacote, nao por falta do gerador.
+#
+# --break-system-packages: o Ubuntu 24.04 marca o Python do sistema como
+# gerenciado pelo apt (PEP 668). Dentro de uma imagem descartavel, que existe
+# para uma rodada, um venv so acrescentaria uma camada.
+RUN pip3 install --no-cache-dir --break-system-packages \
+        "scapy==2.6.1" \
+        "numpy==2.1.3" \
+        "PyYAML==6.0.2"
+
+WORKDIR /work
+CMD ["/bin/bash"]

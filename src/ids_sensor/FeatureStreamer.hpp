@@ -52,8 +52,22 @@ struct StreamerConfig
 {
     std::size_t recentPayloadWindow = 5U;    ///< Payload repetition window, per flow. Contract with training.
     std::size_t sourcePayloadWindow = 1000U; ///< Payload diversity window, per source. Contract with training.
-    std::size_t maxFlows            = 4096U; ///< Cap on flows kept in memory; the oldest is evicted beyond it.
-    std::size_t maxSources          = 256U;  ///< Cap on sources kept in memory; the oldest is evicted beyond it.
+
+    /// Cap on flows kept in memory; the oldest is evicted beyond it.
+    /// MEASURED, not guessed: over the whole dataset the worst file reaches 43 289 distinct flows
+    /// (mitm_single_attacker, whose attack randomises ports), and the denial-of-service file
+    /// reaches 37 349. The first value here was 4096, which those two would have exceeded tenfold,
+    /// evicting silently and diverging from the reference while still producing plausible
+    /// features. See platform/parity-dataset/README.md. At roughly 400 bytes of state per flow
+    /// this reservation costs about 26 MiB, which a bench node can afford; a target that cannot
+    /// lowers the cap and WATCHES FlowEvictions(), because no cap survives an attacker who keeps
+    /// minting ports.
+    std::size_t maxFlows = 65536U;
+
+    /// Cap on sources kept in memory; the oldest is evicted beyond it.
+    /// The same measurement gives at most 11 distinct source addresses per file, so this is three
+    /// orders of magnitude of headroom and the cap exists only to bound an address-spoofing flood.
+    std::size_t maxSources = 4096U;
 
     /// Payload bytes reserved per flow for the Hamming comparison against the previous packet.
     /// A payload beyond this grows the buffer once; it is a reservation, not a limit, so nothing

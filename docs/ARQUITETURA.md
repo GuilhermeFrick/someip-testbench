@@ -275,28 +275,34 @@ someip-testbench/
 ### O que atravessa a fronteira Python → C++
 
 O desenvolvimento e o treino ficam em Python; o `ids_sensor` é C++. Mas **o TL2cgen cobre apenas o
-modelo de árvores**. São quatro artefatos cruzando a fronteira, e três ainda não existem em C++:
+modelo de árvores**. São quatro artefatos cruzando a fronteira:
 
 | Artefato | Como atravessa | Estado |
 |---|---|---|
 | Modelo de árvores | TL2cgen gera C99 no build | resolvido |
-| **Extrator das 16 features** | **código C++ novo** | **a escrever, maior esforço** |
-| *Byte-models* (log-probabilidade por camada) | dado embarcado | a exportar |
+| **Extrator das 16 features** | **código C++ novo** | **feito, com paridade exata sobre o dataset** |
+| *Byte-models* (log-probabilidade por camada) | dado embarcado | formato definido e lido pelo `ByteModels::Create`; hoje quem exporta são os geradores de teste (`tests/gen_parity_*.py`), não o pipeline de treino |
 | Normalização (`xmin`/`xmax` do treino) | dado embarcado | a exportar |
+
+A paridade do extrator foi medida sobre os 7 PCAPs: **14 375 392 quadros, 14 233 354 vetores, 0
+divergências**. Ver [`platform/parity-dataset`](../platform/parity-dataset/README.md).
 
 O **extrator** é o caminho crítico, e não é óbvio: ele tem **estado** (janelas deslizantes por fluxo
 e por origem, além do último pacote por chave de fluxo), calcula log-verossimilhança e entropia
 cruzada sobre os *byte-models*, e distância de Hamming entre *payloads* consecutivos. Nada disso é
 função pura, então portar é mais difícil que portar o modelo.
 
-É também onde entra a otimização já identificada da *source diversity*: trocar o conjunto
-recomputado a cada pacote por um contador incremental de distintos, O(1) em vez de O(janela). Faz
-sentido nascer assim na versão C++, em vez de otimizar o Python e portar depois.
+É também onde entrou a otimização já identificada da *source diversity*: o conjunto recomputado a
+cada pacote virou um **contador incremental de distintos**, O(1) em vez de O(janela), sobre um anel
+de hashes mais um mapa de contagens. Nasceu assim na versão C++, em vez de otimizar o Python e
+portar depois — e a paridade sobre o dataset mostra que a troca de algoritmo **não** mudou nenhum
+dos 14 233 354 vetores.
 
 **A paridade vale para o extrator, não só para o modelo.** É mais fácil errar ali: basta uma janela
 começar cheia em vez de vazia, ou uma ordem de atualização diferente, e as features divergem em
 silêncio. O critério de aceite é *mesmo PCAP produz as mesmas 16 features nos dois lados*, não
-apenas a mesma classe no fim.
+apenas a mesma classe no fim — e é esse o critério que foi verificado, sobre o dataset inteiro e
+não sobre uma amostra.
 
 ### Nota sobre a inferência: bancada não é ECU
 

@@ -83,6 +83,18 @@ class PcapSource final : public IPacketSource
      */
     ara::core::Optional<Frame> Next() override;
 
+    /**
+     * @brief Say whether the replay consumed the whole file or stopped at a read error.
+     * @return An empty value when the file was read to its end, or the error that cut it short.
+     * @retval ::ids::IdsSensorErrc::ArtefactCorrupted A read failed partway through the file.
+     * @details Next() signals both the end of the file and a read error the same way, as an empty
+     *          Optional, because ending is not a failure and the interface therefore returns no
+     *          Result. That makes a truncated replay look exactly like a complete one, which would
+     *          let a figure measured over a dataset quietly cover fewer packets than it claims.
+     *          Whoever counts packets calls this once the loop ends.
+     */
+    ara::core::Result<void> StreamStatus() const;
+
   private:
     struct Impl; ///< Reader state, kept out of this header.
 

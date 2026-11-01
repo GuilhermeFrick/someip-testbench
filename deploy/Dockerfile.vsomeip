@@ -11,10 +11,22 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Subir de versao exige repetir aquele teste.
 ARG VSOMEIP_REF=3.6.4
 
+# Dois grupos nao sao do vsomeip, e estao aqui para que UMA invocacao do
+# tests/run_all.sh dentro desta imagem rode a suite INTEIRA. Antes nao havia
+# maquina capaz disso: o test_packet_source ficava PULADO aqui e o test_libecu
+# ficava PULADO na imagem da paridade.
+#
+#   libpcap-dev     do ids_sensor: e com ele que o PcapSource captura no
+#                   barramento e replica PCAP. O no de sensor roda nesta imagem.
+#   python3 + yaml  do tools/gen_config.py e do tests/check_comm_matrix.py, que
+#                   leem a matriz de comunicacao. Pelo apt e nao pelo pip, que no
+#                   Ubuntu 24.04 exigiria --break-system-packages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates \
         libboost-system-dev libboost-thread-dev libboost-filesystem-dev \
         libboost-log-dev libboost-program-options-dev \
+        libpcap-dev \
+        python3 python3-yaml \
         tcpdump iproute2 iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 

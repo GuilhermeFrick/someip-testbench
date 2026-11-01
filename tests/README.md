@@ -3,8 +3,17 @@
 Rodam no **host**, nunca no alvo, como a §10 do padrão de código exige.
 
 ```bash
-bash tests/run_all.sh          # roda tudo, com os sanitizers ligados
+# completo: a imagem da bancada tem vsomeip E libpcap
+docker run --rm -v "$PWD":/w -w /w someip-base:3.6.4 bash tests/run_all.sh
+
+# no host cru: pula o que depender de biblioteca ausente, e DIZ o que pulou
+bash tests/run_all.sh
 ```
+
+Tudo com os sanitizers ligados, menos o `test_libecu`, que linka o vsomeip e roda sem eles.
+
+Nada aparece como aprovado por omissão. Cada conjunto que não pode rodar imprime **PULADO** com o
+motivo e o que falta instalar.
 
 | Arquivo | Tipo | O que verifica |
 |---|---|---|
@@ -12,11 +21,30 @@ bash tests/run_all.sh          # roda tudo, com os sanitizers ligados
 | `test_bytemodel.cpp` | unitário | `HammingDistance`, a pontuação **posicional** e os erros de carga do artefato |
 | `test_feature_streamer.cpp` | unitário | validação, `Reset`, isolamento das janelas e o **despejo** |
 | `test_libecu.cpp` | unitário | os **caminhos de erro** da fachada, que o handshake não toca |
+| `test_packet_source.cpp` | unitário | códigos de erro, fim de arquivo e o **registro truncado** (precisa de `libpcap-dev`) |
 | `test_comm_matrix.cpp` + `check_comm_matrix.py` | consistência | o cabeçalho gerado contra o YAML da matriz |
+| `test_parity_parser.cpp` + `gen_parser_vectors.py` | oráculo | **o parser campo a campo contra o `someip.parse` do Python** |
 | `test_parity_streamer.cpp` + `gen_parity_vectors.py` | oráculo | **as 16 features contra o extrator do Python** |
 | [`platform/node-handshake`](../platform/node-handshake/) | integração | dois nós trocando SOME/IP em containers |
+| [`platform/parity-dataset`](../platform/parity-dataset/) | oráculo, **dataset inteiro** | a cadeia de produção inteira sobre os 7 PCAPs reais |
 
-**104 asserções**, todas sob AddressSanitizer e UndefinedBehaviorSanitizer.
+**251 asserções**, todas sob AddressSanitizer e UndefinedBehaviorSanitizer, mais o
+`test_comm_matrix` (21 identificadores conferidos contra o YAML pelo lado Python) e o
+`test_parity_streamer` (368 comparações). Por conjunto:
+
+| conjunto | asserções |
+|---|---:|
+| `test_ara_core` | 57 |
+| `test_sliding_window` | 45 |
+| `test_bytemodel` | 40 |
+| `test_feature_streamer` | 39 |
+| `test_packet_source` | 29 |
+| `test_libecu` | 27 |
+| `test_parity_parser` | 14 |
+
+Duas asserções do `test_bytemodel` **não rodam como root**: a do `ArtefactUnreadable` depende de
+`chmod 0` barrar a leitura, e para root não barra. O teste imprime `(pulado: ... root?)` em vez de
+passar em falso, então dentro de container o total é 249.
 
 ## O levantamento que deu origem aos unitários
 
@@ -82,6 +110,55 @@ Roda sob **AddressSanitizer** e **UndefinedBehaviorSanitizer**: o primeiro pega
 vazamento e duplo free, o segundo pega acesso desalinhado no `aligned_storage`.
 Passa também com `-std=c++17`.
 
+## O teste da fonte de pacotes, e o caso que o sanitizer não pega
+
+As capturas de apoio são escritas pelo próprio teste, byte a byte, para o caso ficar visível ao
+lado da expectativa. Ele cobre os códigos de erro (`ArtefactNotFound` para arquivo que não existe,
+`ArtefactCorrupted` para arquivo que não é captura **e** para captura que não é Ethernet), o fim
+de arquivo, a captura válida e vazia, e a interface de rede inexistente.
+
+⚠️ **O caso que justifica o teste é o do registro truncado.** Um registro que no fio tinha 1514
+bytes e foi capturado com 80: a vista tem de ter **80**. Trocar `caplen` por `len` foi verificado
+e o teste acusa — mas o **AddressSanitizer não acusa**. O buffer do libpcap tem o tamanho do
+`snaplen`, então os 1434 bytes a mais caem dentro da própria alocação dele e nenhuma ferramenta
+reclama: o que sai são bytes de lixo tratados como payload, calados. É exatamente o tipo de erro
+que a paridade sobre um dataset sem truncamento também não pegaria.
+
+## O teste de paridade do parser
+
+```bash
+python tests/gen_parser_vectors.py \
+    --repro ../someip-ids-multiclass-contentext --out build/parity
+```
+
+O gerador monta 14 quadros Ethernet crus à mão e deixa o `someip.parse` **real** dizer o que
+cada um vira, inclusive os que ele descarta. Montar à mão é de propósito: aqui eu escolho os
+casos, inclusive os que o dataset pode não conter (VLAN, IPv6, opções de IP, padding).
+
+**Quatro comportamentos da referência parecem defeito e são reproduzidos assim mesmo**, porque o
+modelo foi treinado com o que aquele código produz:
+
+| comportamento | por que "consertar" quebraria |
+|---|---|
+| payload de transporte **menor que os 16 bytes** do cabeçalho SOME/IP não é falha | a referência devolve pacote com payloads vazios, e o extrator produz vetor a partir dele |
+| quadro com **VLAN é descartado** | o EtherType é comparado com `0x0800` exato; tratar a etiqueta faria este parser ver pacotes que a referência nunca viu |
+| o payload vai até o **fim do quadro**, não até `ip_len` | o padding do Ethernet entra no payload, é pontuado pelo modelo de bytes e medido pelas features de tamanho |
+| IPv6 e fragmentação não existem | — |
+
+⚠️ **O caso mais instrutivo do conjunto saiu do gerador, não da minha leitura do código.** Uma
+carga UDP de **2 bytes**, num quadro completado até 60 pelo padding, vira um `pl_l4` de 18 bytes —
+e a referência lê um cabeçalho SOME/IP **dentro do padding**, com `service_id = 0x0102`, e devolve
+2 bytes de "corpo". O parser de referência **inventa uma mensagem a partir de bytes de
+enchimento**. Cortar o payload em `ip_len`, que é o que se faria sem pensar, consertaria o
+comportamento e quebraria a paridade.
+
+**Uma divergência deliberada:** a referência não verifica limites. Em Python o fatiamento é
+seguro, mas `raw[14]`, `raw[23]` e `raw[l4+12]` são indexações, e num quadro curto demais elas
+**estouram**. Em C++ isso seria leitura fora dos limites, não exceção, então o quadro é rejeitado
+com `MalformedPacket`. A divergência só pode aparecer onde o Python já quebrava.
+
+**Resultado: 14 casos, 0 divergências.**
+
 ## O teste de paridade do extrator
 
 É o teste que sustenta a segunda contribuição: se as features divergirem do Python,
@@ -135,6 +212,24 @@ O extrator tem `maxFlows`/`maxSources`; o Python cresce sem limite. No instante 
 que o despejo dispara, os dois deixam de calcular a mesma coisa. Por isso o teste
 **exige que `FlowEvictions()` e `SourceEvictions()` sejam zero** — sem isso, uma
 divergência causada por despejo pareceria erro de aritmética.
+
+⚠️ **E foi exatamente isso que a rodada sobre o dataset achou.** O `maxFlows` valia 4096; o
+`mitm_single_attacker` tem **43 289** fluxos distintos e o `dos_noti_flood` tem **37 349**, porque
+os dois randomizam portas. O valor hoje é 65 536, medido. Ver
+[`platform/parity-dataset`](../platform/parity-dataset/README.md).
+
+## A paridade sobre o dataset inteiro
+
+```bash
+PCAP_DIR=~/dataset/data/pcap bash platform/parity-dataset/run.sh
+```
+
+Os 23 pacotes sintéticos cobrem o que eu soube imaginar. Esta rodada cobre o que eu não soube:
+**14 375 392 quadros, 14 233 354 vetores, 0 divergências**, pela cadeia de produção inteira
+(`PcapSource → SomeipParser → FeatureStreamer`). É o número publicável, e está documentado com os
+achados em [`platform/parity-dataset/README.md`](../platform/parity-dataset/README.md).
+
+Ela não entra no `run_all.sh`: lê 1,4 GB, escreve 966 MB e o lado Python leva 21 minutos.
 
 ## Pendências frente à §10 do padrão
 

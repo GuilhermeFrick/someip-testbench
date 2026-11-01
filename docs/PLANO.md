@@ -147,12 +147,36 @@ serialização (o dissector decodifica, com os identificadores da matriz).
 O `docker-compose.yml` fica para a Fase 1, onde passa a haver cinco nós e duas redes. Com dois nós
 o `run.sh` do degrau basta, e um compose agora seria reescrito na fase seguinte.
 
+## ✅ Caminho crítico da Fase 1 vencido: a cadeia de extração, com paridade
+
+O caminho crítico da Fase 1 não eram os nós — esses são variações do `gnss_ecu`, cujo molde já
+está provado. Era o **sensor em C++**, porque a paridade com o Python se ganha ou se perde nele, e
+**em silêncio**: se as features divergirem, o modelo treinado lá não vale aqui e nada acusa.
+
+| Estágio | Estado |
+|---|---|
+| `ByteModel.cpp` — pontuação **posicional** e Hamming | feito |
+| `FeatureStreamer.cpp` — o único estágio com estado | feito |
+| `SomeipParser.cpp` — Ethernet → IP → TCP/UDP → SOME/IP → SD | feito |
+| `PacketSource.cpp` — replay de PCAP e captura viva, sobre libpcap | feito |
+| `Normalizer.cpp`, `Classifier.cpp`, `SecurityEventDispatcher.cpp`, `Sensor.cpp` | a escrever |
+
+**Critério de pronto atendido, e com margem:** a cadeia de produção inteira
+(`PcapSource → SomeipParser → FeatureStreamer`) foi rodada sobre os 7 PCAPs do dataset e comparada
+com o código Python que treinou o modelo. **14 375 392 quadros, 14 233 354 vetores, 0
+divergências**, exato bit a bit. Ver [`platform/parity-dataset`](../platform/parity-dataset/README.md).
+
+Dois achados que só uma rodada desse tamanho dava:
+
+1. **o teto de fluxos estava dez vezes abaixo do necessário.** `maxFlows` valia 4096, e os
+   arquivos que randomizam portas chegam a 43 289 fluxos distintos. O despejo não é erro visível —
+   o Python não tem teto, então a partir dele os dois lados calculam coisas diferentes com
+   aparência plausível. Foi o contador de despejo, exigido em zero, que virou isso num resultado;
+2. **custo:** a mesma travessia leva 1255 s em Python e **6,3 s** em C++, uns 200×.
+
 ## Próximo passo imediato
 
-**Fase 1**, e o caminho crítico dela é o **extrator das 16 features em C++**
-(`src/ids_sensor/FeatureStreamer.cpp`), não os nós. Os nós agora são variações do `gnss_ecu`: o
-molde existe e está provado.
-
-O extrator é o único estágio com estado, e a paridade com o Python se ganha ou se perde nele.
-Hoje `src/ids_sensor` tem **dez cabeçalhos e nenhum `.cpp`**: são 47 funções declaradas em onze
-arquivos de implementação que não existem.
+Fechar os quatro `.cpp` que faltam, na ordem em que o sensor os atravessa: `Normalizer`,
+`Classifier`, `SecurityEventDispatcher` e `Sensor`. O `Classifier` é o que traz a decisão sobre o
+motor de inferência (TL2cgen, conforme a linha de decisão na [ARQUITETURA](ARQUITETURA.md)) e é o
+que liga esta bancada ao resultado de latência já medido.

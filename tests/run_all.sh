@@ -46,21 +46,39 @@ roda test_ara_core        tests/test_ara_core.cpp src/ids_sensor/ByteModel.cpp s
 roda test_bytemodel       tests/test_bytemodel.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/IdsSensorErrorDomain.cpp
 roda test_feature_streamer tests/test_feature_streamer.cpp $SENSOR
 
+# ------------------------------------------------- precisa do libpcap
+# O libpcap-dev esta nas DUAS imagens: na someip-base, porque o no de sensor vai
+# capturar no barramento, e na someip-parity. No host cru ele pode nao estar, e
+# ai o conjunto aparece como PULADO, nunca como aprovado.
+printf '\n######## test_packet_source ########\n'
+if [ -f /usr/include/pcap.h ] || [ -f /usr/include/pcap/pcap.h ]; then
+    ARGS=()
+    roda test_packet_source tests/test_packet_source.cpp src/ids_sensor/PacketSource.cpp \
+         src/ids_sensor/IdsSensorErrorDomain.cpp -lpcap
+else
+    echo "  PULADO: libpcap-dev ausente no host. Rode dentro da imagem da bancada:"
+    echo "    docker run --rm -v \"\$PWD\":/w -w /w $IMG bash tests/run_all.sh"
+fi
+
 # ---------------------------------------------------- cabecalho gerado
 printf '\n######## test_comm_matrix ########\n'
-if [ -f build/cfg/CommMatrix.hpp ]; then
-    if g++ $FLAGS -o "$OBJ/tcm" tests/test_comm_matrix.cpp 2>"$OBJ/tcm.err"; then
-        "$OBJ/tcm" > "$OBJ/tcm.out"
-        if python3 tests/check_comm_matrix.py platform/comm_matrix.yaml "$OBJ/tcm.out"; then
-            :
-        else
-            FALHAS=$((FALHAS + 1))
-        fi
+# O conferidor e em Python e le a matriz em YAML. Sem o interprete ou sem o
+# modulo, isto e PULADO e nao FALHA: falta ferramenta, nao esta errado. Antes
+# desta checagem o `python3: command not found` ia para o stderr e o conjunto
+# contava como falha sem dizer por que.
+if ! command -v python3 >/dev/null 2>&1 || ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  PULADO: falta python3 com PyYAML, que o tests/check_comm_matrix.py usa."
+elif [ ! -f build/cfg/CommMatrix.hpp ]; then
+    echo "  PULADO: rode antes  python3 tools/gen_config.py --out build/cfg"
+elif g++ $FLAGS -o "$OBJ/tcm" tests/test_comm_matrix.cpp 2>"$OBJ/tcm.err"; then
+    "$OBJ/tcm" > "$OBJ/tcm.out"
+    if python3 tests/check_comm_matrix.py platform/comm_matrix.yaml "$OBJ/tcm.out"; then
+        :
     else
-        echo "  NAO COMPILOU:"; head -10 "$OBJ/tcm.err" | sed 's/^/    /'; FALHAS=$((FALHAS + 1))
+        FALHAS=$((FALHAS + 1))
     fi
 else
-    echo "  PULADO: rode antes  python tools/gen_config.py --out build/cfg"
+    echo "  NAO COMPILOU:"; head -10 "$OBJ/tcm.err" | sed 's/^/    /'; FALHAS=$((FALHAS + 1))
 fi
 
 # ------------------------------------------------- paridade do parser
@@ -84,8 +102,21 @@ else
 fi
 
 # ------------------------------------------------------- precisa do vsomeip
-printf '\n######## test_libecu (dentro da imagem) ########\n'
-if docker image inspect "$IMG" >/dev/null 2>&1; then
+# Tres situacoes, nesta ordem. A primeira existe para que UMA invocacao dentro da
+# imagem da bancada cubra a suite inteira: ali ha vsomeip e libpcap, mas nao ha
+# docker, e a versao antiga deste bloco so sabia chamar `docker run` e portanto
+# marcava PULADO justamente dentro da imagem onde o vsomeip mora.
+printf '\n######## test_libecu ########\n'
+if [ -d /usr/local/include/vsomeip ]; then
+    echo "  (vsomeip local: compilando aqui, sem docker)"
+    sh -c '
+        g++ -std=c++14 -I. -Wall -Wextra -Wpedantic -o /tmp/tl tests/test_libecu.cpp \
+            src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/EcuErrorDomain.cpp \
+            src/ids_sensor/IdsSensorErrorDomain.cpp -lvsomeip3 -pthread || exit 1
+        VSOMEIP_CONFIGURATION=build/cfg/vsomeip-gnss_ecu.json \
+        VSOMEIP_APPLICATION_NAME=service-sample /tmp/tl 2>/dev/null' || FALHAS=$((FALHAS + 1))
+elif docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "  (vsomeip na imagem $IMG)"
     docker run --rm -v "$ROOT":/w -w /w "$IMG" sh -c '
         g++ -std=c++14 -I. -Wall -Wextra -Wpedantic -o /tmp/tl tests/test_libecu.cpp \
             src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/EcuErrorDomain.cpp \
@@ -93,8 +124,8 @@ if docker image inspect "$IMG" >/dev/null 2>&1; then
         VSOMEIP_CONFIGURATION=/w/build/cfg/vsomeip-gnss_ecu.json \
         VSOMEIP_APPLICATION_NAME=service-sample /tmp/tl 2>/dev/null' || FALHAS=$((FALHAS + 1))
 else
-    echo "  PULADO: imagem $IMG ausente. Os onze codigos de erro da libecu NAO"
-    echo "          foram verificados; nao conte isto como aprovado."
+    echo "  PULADO: sem vsomeip local e sem a imagem $IMG. Os onze codigos de erro"
+    echo "          da libecu NAO foram verificados; nao conte isto como aprovado."
 fi
 
 printf '\n================================\n'

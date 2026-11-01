@@ -43,6 +43,11 @@ camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Ada
 
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — camadas, diagramas, decisões técnicas
 - [`docs/PLANO.md`](docs/PLANO.md) — fases, entregáveis e riscos
+- [`tests/README.md`](tests/README.md) — a suíte, o que cada teste pega e o que ainda falta
+- [`platform/sd-smoke`](platform/sd-smoke/README.md) — o Service Discovery entre containers
+- [`platform/node-handshake`](platform/node-handshake/README.md) — dois nós nossos trocando SOME/IP
+- [`platform/parity-dataset`](platform/parity-dataset/README.md) — a extração em C++ contra o Python,
+  sobre os 14,4 M pacotes do dataset
 
 ## Repos relacionados
 
@@ -55,4 +60,16 @@ camada que o CANoe não tem: a cadeia **Security Event → IdsM** da AUTOSAR Ada
 
 ## Status
 
-Em projeto. Nenhum código ainda: esta é a fase de arquitetura.
+**Fase 0 fechada** e o caminho crítico da **Fase 1** vencido.
+
+| | Estado |
+|---|---|
+| Matriz de comunicação → config vsomeip + cabeçalhos C++ | feito ([`tools/gen_config.py`](tools/gen_config.py)) |
+| SOME/IP-SD entre containers | validado |
+| `libecu` (`Skeleton`/`Proxy`) e dois nós ECU trocando evento | **passou**, decodificado pelo dissector |
+| Sensor: fonte de pacotes, parser, modelo de bytes e extrator das 16 features | feito, com **paridade exata** contra o Python sobre o dataset inteiro |
+| Normalização, classificador, despacho de Security Event | a escrever |
+| CARLA alimentando os serviços; injeção de ataques | Fases 1 e 2 |
+
+O número que sustenta a cadeia de extração: **14 375 392 quadros, 14 233 354 vetores de features,
+0 divergências** contra o código Python que treinou o modelo, exato bit a bit.
