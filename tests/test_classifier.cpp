@@ -283,7 +283,7 @@ int main(int argc, char **argv)
              * por isso que o ModelNotAvailable existe. */
             chk::ChecaIgual(r.Error().Value(), static_cast<int>(ids::IdsSensorErrc::ModelNotAvailable),
                             "sem o C gerado, da ModelNotAvailable em vez de erro de ligacao");
-            std::printf("        (para conferir o TL2cgen tambem, linke build/probe/tl2cgen_c/main.c)\n");
+            std::printf("        (para conferir o TL2cgen tambem, linke o main.c gerado ao lado das tabelas)\n");
         }
     }
 

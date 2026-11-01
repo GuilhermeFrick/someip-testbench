@@ -42,8 +42,22 @@ CADEIA="src/ids_sensor/Sensor.cpp src/ids_sensor/Classifier.cpp src/ids_sensor/N
         src/ids_sensor/SomeipParser.cpp src/ids_sensor/ByteModel.cpp src/ids_sensor/FeatureStreamer.cpp \
         src/ids_sensor/PacketSource.cpp src/ids_sensor/SecurityEventDispatcher.cpp \
         src/ids_sensor/IdsSensorErrorDomain.cpp src/util/UtilErrorDomain.cpp $ARA"
-# Tabelas do modelo de PROVA, geradas por experiments/bench-inference/make_probe.sh.
-PROBE="${PROBE:-build/probe}"
+# Artefatos do modelo. Prefere o modelo REAL em build/cfg, convertido dos
+# artefatos do treino por tools/build_sensor_artefacts.sh; cai para o modelo de
+# PROVA de experiments/bench-inference/make_probe.sh quando o real nao existe.
+# Com o real as linhas de prova vem do proprio dataset, entao as regioes de
+# decisao visitadas sao as que o sensor visita.
+if [ -f build/cfg/tables.bin ] && [ -f build/cfg/model_rows.f32 ]; then
+    MODELO="build/cfg"
+    MODELO_LINHAS="build/cfg/model_rows.f32"
+    MODELO_PROBS="build/cfg/model_probs.txt"
+    MODELO_QUAL="REAL (modelo adotado, linhas do dataset)"
+else
+    MODELO="${PROBE:-build/probe}"
+    MODELO_LINHAS="$MODELO/probe_rows.f32"
+    MODELO_PROBS="$MODELO/probe_probs.txt"
+    MODELO_QUAL="de PROVA (dados aleatorios)"
+fi
 
 # ---------------------------------------------------------------- sem vsomeip
 ARGS=()
@@ -77,19 +91,24 @@ fi
 # dele e a FORMA (16 features, 5 classes), que e o que determina a travessia, o
 # layout e a ABI. O modelo real nao esta versionado.
 printf '\n######## test_classifier ########\n'
-if [ -f "$PROBE/tables.bin" ] && [ -f "$PROBE/probe_rows.f32" ] && [ -f "$PROBE/probe_probs.txt" ]; then
-    ARGS=("$PROBE/tables.bin" "$PROBE/probe_rows.f32" "$PROBE/probe_probs.txt")
+if [ -f "$MODELO/tables.bin" ] && [ -f "$MODELO_LINHAS" ] && [ -f "$MODELO_PROBS" ]; then
+    echo "  (modelo $MODELO_QUAL)"
+    ARGS=("$MODELO/tables.bin" "$MODELO_LINHAS" "$MODELO_PROBS")
     roda test_classifier tests/test_classifier.cpp src/ids_sensor/Classifier.cpp \
          src/ids_sensor/IdsSensorErrorDomain.cpp
 else
-    echo "  PULADO: rode antes  bash experiments/bench-inference/make_probe.sh"
+    echo "  PULADO: nenhum modelo. Converta o do treino com"
+    echo "    bash tools/build_sensor_artefacts.sh <dir-dos-artefatos>"
+    echo "  ou gere o de prova com"
+    echo "    bash experiments/bench-inference/make_probe.sh"
 fi
 
 printf '\n######## test_sensor ########\n'
-if [ ! -f "$PROBE/tables.bin" ]; then
-    echo "  PULADO: rode antes  bash experiments/bench-inference/make_probe.sh"
+if [ ! -f "$MODELO/tables.bin" ]; then
+    echo "  PULADO: nenhum modelo; veja a mensagem do test_classifier."
 elif [ -f /usr/include/pcap.h ] || [ -f /usr/include/pcap/pcap.h ]; then
-    ARGS=("$PROBE/tables.bin")
+    echo "  (modelo $MODELO_QUAL)"
+    ARGS=("$MODELO/tables.bin")
     roda test_sensor tests/test_sensor.cpp $CADEIA -lpcap
 else
     echo "  PULADO: libpcap-dev ausente no host (o PacketSource entra na ligacao da cadeia)."

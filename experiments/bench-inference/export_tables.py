@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """Exporta o modelo XGBoost para TABELAS binarias compactas.
 
-A ideia a testar: o TL2cgen vira megabytes de CODIGO (323 mil linhas de if/else,
-objeto de 11,7 MB) e sofre pressao de cache de instrucoes. Aqui o modelo vira
-DADO: um array de nos de 16 bytes, percorrido por um laco fixo.
+A ideia a testar: o TL2cgen vira CODIGO e sofre pressao de cache de instrucoes,
+enquanto aqui o modelo vira DADO -- um array de nos de 16 bytes, percorrido por
+um laco fixo.
+
+O tamanho desse codigo depende muito do modelo, e vale registrar os dois pontos
+medidos, porque a diferenca entre eles e o argumento:
+
+    300 rodadas x profundidade 8   323 mil linhas,  objeto de 11,7 MB
+     25 rodadas x profundidade 8    48,6 mil linhas, objeto de  1,77 MB
+
+O segundo e o modelo ADOTADO (24 329 nos, tabela de 0,39 MB). Foi com o primeiro
+que a pressao de cache de instrucoes apareceu no bench; com o adotado o codigo
+gerado e seis vezes menor e cabe muito melhor.
 
 Layout de tables.bin (little-endian):
     int32  n_trees, n_class, n_nodes, n_feat
@@ -59,8 +69,28 @@ def export(model_path: str, outdir: str, quiet: bool = False) -> int:
     cfg = json.loads(bst.save_config())
     n_class = int(cfg["learner"]["learner_model_param"].get("num_class", 1)) or 1
     n_feat = int(cfg["learner"]["learner_model_param"].get("num_feature", 0))
-    # base_score pode vir escalar ("0.5") ou vetor por classe ("[a,b,c,...]")
-    raw = str(cfg["learner"]["learner_model_param"].get("base_score", "0"))
+
+    # base_score pode vir escalar ("0.5") ou vetor por classe ("[a,b,c,...]").
+    #
+    # ⚠️ LIDO DO ARQUIVO DO MODELO, nao do save_config. Um xgboost mais ANTIGO que
+    # o que treinou o modelo carrega o arquivo sem erro e devolve base_score = 0.5
+    # pelo save_config, descartando o vetor que esta la dentro. Como aqui o
+    # base_score e um vetor por classe, ele NAO cancela no softmax: as margens
+    # iniciais sairiam erradas e nada falharia. Isso aconteceu de verdade, lendo
+    # um modelo do xgboost 3.3.0 com o 2.1.3.
+    raw = None
+    try:
+        with open(model_path, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        raw = doc["learner"]["learner_model_param"].get("base_score")
+        origem = "arquivo do modelo"
+    except Exception:                                # noqa: BLE001
+        raw = None
+    if raw is None:
+        raw = cfg["learner"]["learner_model_param"].get("base_score", "0")
+        origem = "save_config (o arquivo nao pode ser lido como JSON)"
+
+    raw = str(raw)
     if raw.strip().startswith("["):
         base = [float(v) for v in raw.strip()[1:-1].split(",") if v.strip()]
     else:
@@ -76,7 +106,12 @@ def export(model_path: str, outdir: str, quiet: bool = False) -> int:
 
     n_trees = len(roots)
     if not quiet:
-        print(f"arvores={n_trees}  classes={n_class}  features={n_feat}  base_score={base}")
+        print(f"arvores={n_trees}  classes={n_class}  features={n_feat}")
+        print(f"base_score={base}  (lido do {origem})")
+        if len(set(base)) == 1:
+            print("  (escalar: cancela no softmax)")
+        else:
+            print("  (VETOR por classe: NAO cancela no softmax, tem de ser embarcado)")
         print(f"nos={len(nodes)}  tabela={len(nodes) * 16 / 1e6:.2f} MB "
               f"(contra 11,7 MB de objeto do TL2cgen)")
         print(f"arvores por classe={n_trees // max(n_class, 1)}  (classe = indice % n_class)")

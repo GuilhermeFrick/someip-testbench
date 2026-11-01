@@ -34,5 +34,20 @@ RUN pip3 install --no-cache-dir --break-system-packages \
         "numpy==2.1.3" \
         "PyYAML==6.0.2"
 
+# xgboost, treelite e tl2cgen: leem o modelo treinado e geram o C99 dele.
+#
+# A VERSAO DO XGBOOST NAO E ESCOLHA LIVRE. O modelo adotado foi salvo pelo
+# xgboost 3.3.0, e lido com o 2.1.3 ele carrega SEM ERRO e devolve
+# base_score = 0.5 em vez do vetor por classe que esta no arquivo. Como neste
+# modelo o base_score e um vetor, ele NAO cancela no softmax: as margens iniciais
+# sairiam erradas e as probabilidades junto, sem nada falhar. O treelite 4.4.1
+# tambem nao le o JSON do 3.3.0, mas esse ao menos ESTOURA, em vez de calar.
+#
+# Versoes fixas, como as demais, para a rodada poder ser repetida.
+RUN pip3 install --no-cache-dir --break-system-packages \
+        "xgboost==3.3.0" \
+        "treelite==4.8.1" \
+        "tl2cgen==1.0.0"
+
 WORKDIR /work
 CMD ["/bin/bash"]

@@ -181,21 +181,32 @@ Dois achados que só uma rodada desse tamanho dava:
    aparência plausível. Foi o contador de despejo, exigido em zero, que virou isso num resultado;
 2. **custo:** a mesma travessia leva 1255 s em Python e **6,3 s** em C++, uns 200×.
 
+## ✅ Artefatos do treino recuperados e verificados (01/11)
+
+Os cinco artefatos foram recuperados da VM de treino. O `Classifier` não roda mais contra um modelo
+de prova: roda contra o **modelo adotado** (125 árvores, 25 rodadas, `base_score` em vetor por
+classe), e os dois motores reproduzem o `predict` do XGBoost dentro de **2,4e-07** em 2048 linhas
+reais do dataset.
+
+As datas dos artefatos **não eram da mesma rodada**, e isso foi verificado em vez de assumido:
+`minmax.npy` é **idêntico bit a bit** a um recálculo em float64 a partir dos PCAPs, e
+`bytemodels.npz` fica dentro de 1 ULP. Ver [ARTEFATOS](ARTEFATOS.md), que também registra o defeito
+de versão do xgboost que quase embarcou um `base_score` errado em silêncio.
+
 ## Próximo passo imediato
 
-O componente está completo e testado, mas **falta o artefato que o torna o IDS de verdade: o
-modelo treinado.** O `model_16.json` e o `minmax.npy` da rodada de treino não estão versionados em
-nenhum repositório e estavam só na VM, que foi desligada. Hoje o `Classifier` roda contra um
-**modelo de prova** treinado em dados aleatórios, que valida travessia, ABI e layout — mas não é o
-modelo adotado.
+**O nó de sensor** (`src/nodes/`): o `Sensor` dentro de um executável, com `LiveSource` capturando
+no barramento. É aí que o `libpcap-dev` acrescentado à imagem da bancada passa a ser usado para o
+que motivou acrescentá-lo.
 
-Duas frentes, nesta ordem:
+Dois pontos de atenção já conhecidos:
 
-1. **Recuperar ou regerar os artefatos de treino**, e versioná-los junto do repositório de
-   reprodução. Os 14,2 M vetores de features já estão no disco da bancada, então falta o rótulo
-   por pacote para retreinar. É também o que fecha o `TrainingRunMismatch`, o último código de erro
-   declarado que nada produz: ele exige uma marca de rodada nos três artefatos.
-2. **O nó de sensor** (`src/nodes/`), que é o `Sensor` dentro de um executável com `LiveSource` no
-   barramento — e aí o `libpcap-dev` na imagem da bancada, que já foi acrescentado, passa a ser
-   usado para o que motivou acrescentá-lo. Atenção ao achado do `sd-smoke`: um monitor passivo em
-   container separado **não vê o multicast**, então o nó precisa entrar nos grupos IGMP.
+- o achado do `sd-smoke`: um monitor passivo em container separado **não vê o multicast**, porque a
+  bridge só entrega a quem entrou no grupo por IGMP. O nó precisa entrar nos grupos;
+- o `Sensor::Run` é o laço de **replay**, não o de captura viva. Um nó vivo dirige os estágios por
+  `OnFrame()` do seu próprio laço, que distingue "ainda não chegou nada" de "pare" e é quem tem a
+  condição de parada.
+
+Pendência de fundo, que não bloqueia: o **`TrainingRunMismatch` segue sem produtor**. Fechá-lo
+exige uma marca de rodada nos três artefatos; hoje a consistência foi verificada à mão, uma vez, e
+não é verificável em runtime.

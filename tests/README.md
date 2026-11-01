@@ -174,10 +174,23 @@ seria compatível por acidente), e `get_num_class` parece que deveria devolver a
 Não é paridade bit a bit, e nem deveria ser: a ordem das somas de margem dentro do XGBoost não é a
 mesma e os três somam em `float`. O que tem de bater exatamente é a **decisão**, e bate.
 
-⚠️ **O que este teste NÃO cobre:** o modelo de prova tem `base_score` **escalar** (0,5 expandido
-para as 5 classes). O modelo adotado tem `base_score` em **vetor por classe**, que é o caso que não
-cancela no softmax — e foi justamente o confronto entre os dois motores que revelou isso. Quando o
-modelo real voltar a estar disponível, é com ele que este teste tem de rodar.
+### E com o modelo REAL
+
+O `run_all.sh` prefere `build/cfg` (modelo adotado, convertido por `tools/build_sensor_artefacts.sh`)
+e só cai para o modelo de prova quando aquele não existe. Com o real, **as linhas de prova vêm do
+próprio dataset** — 2048 linhas amostradas com passo fixo sobre os 14,2 M vetores e normalizadas com
+os limites do treino. Isso importa: as regiões de decisão que o teste visita passam a ser as que o
+sensor visita.
+
+| motor | pior diferença | classe |
+|---|---:|---|
+| avaliador compacto | 2,38e-07 | bate em todas as 2048 |
+| C99 do TL2cgen | 2,09e-07 | bate em todas as 2048 |
+
+🔴 **E foi este teste que pegou o defeito do `base_score`.** O modelo adotado tem `base_score` em
+**vetor por classe**, que não cancela no softmax; lido com um xgboost mais antigo que o que treinou
+o modelo, ele voltava como `0,5` escalar, **sem erro nenhum**. Ver
+[`docs/ARTEFATOS.md`](../docs/ARTEFATOS.md).
 
 ## O teste de paridade do parser
 

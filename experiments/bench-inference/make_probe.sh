@@ -41,9 +41,11 @@ docker run --rm -i -v "$ROOT":/w -w /w "$IMG" bash -s <<SCRIPT
 set -e
 trap 'chown -R $HOST_UID:$HOST_GID /w/build 2>/dev/null || true' EXIT
 
-echo '[1/4] instalando xgboost, treelite e tl2cgen'
-pip3 install --no-cache-dir --break-system-packages --quiet \
-    'xgboost==2.1.3' 'treelite==4.4.1' 'tl2cgen==1.0.0'
+echo '[1/4] versoes do toolchain do modelo'
+python3 -c "
+import xgboost, treelite, tl2cgen
+print('   xgboost', xgboost.__version__, 'treelite', treelite.__version__, 'tl2cgen', tl2cgen.__version__)
+"
 
 echo '[2/4] treinando o modelo de prova'
 python3 -I experiments/bench-inference/make_probe_model.py --out $OUT
