@@ -155,6 +155,21 @@ def de_pcap(pcap_dir: str, repro: str):
     return xmin, xmax, "recalculado dos PCAPs (float64, exato)"
 
 
+def escreve(xmin: list, xmax: list, destino: str) -> None:
+    """Grava os limites no formato que o `Normalizer::Create` lê.
+
+    Está numa função separada porque o `tools/calibrate_domain.py` grava o mesmo
+    formato a partir de modelos que já estão em memória. Dois escritores do mesmo
+    artefato divergindo em silêncio seria a mesma família de defeito dos três
+    artefatos vindos de rodadas de treino diferentes.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(destino)), exist_ok=True)
+    with open(destino, "wb") as fh:
+        fh.write(struct.pack("<I", N_FEAT))
+        fh.write(struct.pack("<%dd" % N_FEAT, *xmin))
+        fh.write(struct.pack("<%dd" % N_FEAT, *xmax))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     fonte = ap.add_mutually_exclusive_group(required=True)
@@ -184,11 +199,7 @@ def main() -> None:
             "repeat_rate", "someip_len", "l4_len", "src_payload_div",
         ]
 
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    with open(a.out, "wb") as fh:
-        fh.write(struct.pack("<I", N_FEAT))
-        fh.write(struct.pack("<%dd" % N_FEAT, *xmin))
-        fh.write(struct.pack("<%dd" % N_FEAT, *xmax))
+    escreve(xmin, xmax, a.out)
 
     print()
     print("fonte: %s" % origem)

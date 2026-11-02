@@ -29,6 +29,36 @@ ORDEM = ("someip", "sd", "l4")
 N_VALORES = 256
 
 
+def escreve(tabelas: dict, destino: str) -> None:
+    """Grava as três tabelas no formato que o `ByteModels::Create` lê.
+
+    Separada do `main()` porque o `tools/calibrate_domain.py` ajusta os modelos
+    num barramento novo e grava daqui, sem passar por um `.npz`.
+    """
+    import numpy as np
+
+    faltando = [k for k in ORDEM if k not in tabelas]
+    if faltando:
+        raise SystemExit("faltam tabelas: %s (tem: %s)" % (", ".join(faltando), ", ".join(sorted(tabelas))))
+
+    os.makedirs(os.path.dirname(os.path.abspath(destino)), exist_ok=True)
+    with open(destino, "wb") as fh:
+        for nome in ORDEM:
+            tabela = tabelas[nome]
+            esperado = (POSICOES[nome], N_VALORES)
+            if tabela.shape != esperado:
+                # Recusar aqui e melhor do que gravar um artefato que o lado C++
+                # vai ler com o numero errado de posicoes.
+                raise SystemExit("tabela %s com forma %s, esperado %s" % (nome, tabela.shape, esperado))
+            fh.write(struct.pack("<I", POSICOES[nome]))
+            # float64 nativo, little-endian, linha a linha: e o que o
+            # ByteModels::Create le com fread direto no array.
+            fh.write(np.ascontiguousarray(tabela, dtype="<f8").tobytes())
+            print("  %-7s %s  min=%.6g  max=%.6g" % (nome, tabela.shape, float(tabela.min()), float(tabela.max())))
+
+    print("%d bytes -> %s" % (os.path.getsize(destino), destino))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--npz", required=True, help="bytemodels.npz salvo pelo pipeline de treino")
@@ -42,22 +72,7 @@ def main() -> None:
     if faltando:
         raise SystemExit("faltam tabelas no npz: %s (tem: %s)" % (", ".join(faltando), ", ".join(z.files)))
 
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    with open(a.out, "wb") as fh:
-        for nome in ORDEM:
-            tabela = z[nome]
-            esperado = (POSICOES[nome], N_VALORES)
-            if tabela.shape != esperado:
-                # Recusar aqui e melhor do que gravar um artefato que o lado C++
-                # vai ler com o numero errado de posicoes.
-                raise SystemExit("tabela %s com forma %s, esperado %s" % (nome, tabela.shape, esperado))
-            fh.write(struct.pack("<I", POSICOES[nome]))
-            # float64 nativo, little-endian, linha a linha: e o que o
-            # ByteModels::Create le com fread direto no array.
-            fh.write(np.ascontiguousarray(tabela, dtype="<f8").tobytes())
-            print("  %-7s %s  min=%.6g  max=%.6g" % (nome, tabela.shape, float(tabela.min()), float(tabela.max())))
-
-    print("%d bytes -> %s" % (os.path.getsize(a.out), a.out))
+    escreve({k: z[k] for k in ORDEM}, a.out)
 
 
 if __name__ == "__main__":

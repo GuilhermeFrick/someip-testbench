@@ -97,6 +97,35 @@ TCP porque "o transporte vem da configuração JSON". Vem o *endpoint*; o transp
 não. Agora `Transport` é parâmetro **sem valor padrão** no `NodeRuntime`, e o
 `test_matrix_table` reprova uma matriz que deixe o transporte indefinido.
 
+### 2.5 🔴 O CRITÉRIO FOI MEDIDO: 0,027% no dataset, 4,11% na bancada no melhor caso
+
+O mesmo binário, sobre o benigno do próprio dataset: **0,0272%** de falso positivo (597 em 2,19 M
+pacotes). É o número de referência. Sobre a bancada reproduzida, calibrando numa rodada e medindo em
+**outra**:
+
+| conteúdo | artefatos | falso positivo | × referência |
+|---|---|---:|---:|
+| — (dataset) | do treino | **0,0272%** | 1× |
+| `counter` | do treino | 9,42% | 346× |
+| `counter` | limites **recalibrados** | **4,11%** | 151× |
+| `counter` | limites **e** bytes recalibrados | 25,29% | 930× |
+| `random` | do treino | 44,50% | 1636× |
+| `random` | limites e/ou bytes recalibrados | 49,62% | 1824× |
+
+**Recalibrar os limites ajuda, e ajuda pouco:** −56%, e ainda 151× a referência — 4 449 alarmes em
+60 s. **Recalibrar os modelos de bytes PIORA**, quase todo em `fuzzy`, e a causa é identificável: no
+payload `counter` as tabelas ficam quase determinísticas (`min=-10,91`, `max=-0,0048`) e no `random`
+ficam chatas (perto de `log(1/256)`); nos dois casos a log-verossimilhança e a entropia saem da faixa
+em que o classificador foi treinado. **O conteúdo do payload domina:** `random` é cinco vezes pior que
+`counter` com os mesmos artefatos.
+
+🟢 **E há uma consistência que sustenta a reprodução:** no dataset, 481 dos 597 falsos positivos vêm
+de `172.18.0.10`, o provedor de `0x1001`; na bancada, 9 787 dos 10 195 vêm do **mesmo papel**,
+`172.28.0.10`, que é o de maior cadência. O nó mais difícil é o mesmo nos dois barramentos. A
+estrutura transferiu; o conteúdo não.
+
+Detalhe completo, ressalvas e receita de reprodução em `experiments/eval-pcap/RESULTADOS.md`.
+
 ## 3. As descobertas, por ordem de importância
 
 ### 3.1 🔴 O dataset do Kim é a MESMA arquitetura da nossa bancada
@@ -264,8 +293,12 @@ diferentes.
    segundo projeto de qualquer máquina, então a rodada usa `SUBNET=` e o
    `tools/remap_subnet.py` escreve uma matriz derivada preservando o **último octeto** de cada
    nó. Endereço é chave de fluxo, não feature; o desvio é de endereçamento, não de comportamento.
-2. **Rodar o pipeline congelado sobre o tráfego reproduzido.** É o teste que valida a
-   bancada: se o falso positivo cair ao nível do dataset, a escada da §4.1 fica em pé.
+2. ~~**Rodar o pipeline congelado sobre o tráfego reproduzido.**~~ ✅ **feito**, ver §2.5. Não caiu
+   ao nível do dataset: 4,11% no melhor caso contra 0,0272%. **A escada não cai, mas muda de ordem** —
+   o degrau 1 (conteúdo do payload) deixou de ser "o próximo a medir" e passou a ser **o termo
+   dominante**, porque as duas políticas sintéticas (`counter` e `random`) são ambas ruins e por
+   motivos opostos. O que o resultado pede é conteúdo com estatística de sinal real, isto é, a
+   ancoragem no CARLA — que era a Fase 1 e agora tem justificativa medida, não suposta.
 3. **Reproduzir o macro-F1 (0,9689)** com a cadeia em C++ sobre o dataset, fechando a
    verificação ponta a ponta — hoje as peças estão verificadas, o número final não.
 4. Subir a escada, um degrau por vez, medindo falso positivo em cada um.
