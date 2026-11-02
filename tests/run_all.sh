@@ -149,6 +149,20 @@ else
     echo "  PULADO: rode antes  python3 tools/gen_config.py --out build/cfg"
 fi
 
+# -------------------------------------------- o plano do no generico
+# A tabela acima e conferida na ESTRUTURA. Este confere o que o no generico
+# DERIVA dela: quais eventos publicar, e em quais eventgroups assinar. Roda sem
+# barramento, que e o motivo de a derivacao viver num cabecalho separado do no.
+printf '
+######## test_matrix_plan ########
+'
+if [ -f build/cfg/CommMatrixTable.hpp ]; then
+    ARGS=()
+    roda test_matrix_plan tests/test_matrix_plan.cpp
+else
+    echo "  PULADO: rode antes  python3 tools/gen_config.py --out build/cfg"
+fi
+
 # ------------------------------------------------- paridade do parser
 printf '\n######## test_parity_parser ########\n'
 if [ -f build/parity/parser_vectors.txt ]; then
@@ -179,7 +193,7 @@ if [ -d /usr/local/include/vsomeip ]; then
     echo "  (vsomeip local: compilando aqui, sem docker)"
     sh -c '
         g++ -std=c++14 -I. -Wall -Wextra -Wpedantic -o /tmp/tl tests/test_libecu.cpp \
-            src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/EcuErrorDomain.cpp \
+            src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/NodeRuntime.cpp src/libecu/EcuErrorDomain.cpp \
             src/ids_sensor/IdsSensorErrorDomain.cpp -lvsomeip3 -pthread || exit 1
         VSOMEIP_CONFIGURATION=build/cfg/vsomeip-gnss_ecu.json \
         VSOMEIP_APPLICATION_NAME=service-sample /tmp/tl 2>/dev/null' || FALHAS=$((FALHAS + 1))
@@ -187,7 +201,7 @@ elif docker image inspect "$IMG" >/dev/null 2>&1; then
     echo "  (vsomeip na imagem $IMG)"
     docker run --rm -v "$ROOT":/w -w /w "$IMG" sh -c '
         g++ -std=c++14 -I. -Wall -Wextra -Wpedantic -o /tmp/tl tests/test_libecu.cpp \
-            src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/EcuErrorDomain.cpp \
+            src/libecu/Skeleton.cpp src/libecu/Proxy.cpp src/libecu/NodeRuntime.cpp src/libecu/EcuErrorDomain.cpp \
             src/ids_sensor/IdsSensorErrorDomain.cpp -lvsomeip3 -pthread || exit 1
         VSOMEIP_CONFIGURATION=/w/build/cfg/vsomeip-gnss_ecu.json \
         VSOMEIP_APPLICATION_NAME=service-sample /tmp/tl 2>/dev/null' || FALHAS=$((FALHAS + 1))

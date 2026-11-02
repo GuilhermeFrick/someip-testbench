@@ -52,6 +52,8 @@ enum class EcuErrc : ara::core::ErrorDomain::CodeType
     EventNotOffered             = 9, ///< Send() on an event that was not offered first.
     PayloadTooLarge             = 10, ///< The payload exceeds what one SOME/IP message may carry.
     InvalidConfiguration        = 11, ///< An identifier is zero, or the application name is empty.
+    ServiceNotDeclared          = 12, ///< An operation named a service instance that ::ids::ecu::NodeRuntime was never told about.
+    ServiceAlreadyDeclared      = 13, ///< The same service instance was declared twice on one ::ids::ecu::NodeRuntime.
 };
 
 /**

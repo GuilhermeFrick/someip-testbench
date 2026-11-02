@@ -51,6 +51,12 @@ const char *EcuErrorDomain::Message(ara::core::ErrorDomain::CodeType errorCode) 
         case EcuErrc::InvalidConfiguration:
             text = "identifier is zero or the application name is empty";
             break;
+        case EcuErrc::ServiceNotDeclared:
+            text = "service instance was not declared on this runtime";
+            break;
+        case EcuErrc::ServiceAlreadyDeclared:
+            text = "service instance was declared twice on this runtime";
+            break;
         default:
             // Keeps the generic message, so an unmapped value never yields nullptr.
             break;
