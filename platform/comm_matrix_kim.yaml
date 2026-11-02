@@ -12,6 +12,15 @@
 # ⚠️ O que a captura NÃO carrega, e portanto não está aqui:
 #   - os nomes das funções (ADAS, GNSS, IMU...): o barramento tem identificador,
 #     não semântica. Os nomes abaixo são sintéticos, derivados dos IDs;
+#
+# ✅ IDENTIDADE RECUPERADA (2026-11-02, tools/decode_payload_semantics.py): os
+#    nomes ficam sintéticos aqui para não mudar a configuração gerada, mas cada
+#    nó corresponde a uma ECU do artigo do Kim (ordem alfabética dos IPs,
+#    confirmada por 6 verificações independentes de conteúdo e assinatura):
+#      .2 ADAS  .3 CLU  .4 GPS (0x1003)  .5 IMU (0x1002)  .6 NAV
+#      .7 PT    .8 STE  .9 TEL           .10 VDE (0x1001)
+#    Diferenças em relação à figura 2 do artigo: no PCAP a ADAS recebe também
+#    GPS, e o PT recebe só VDE (a figura mostra IMU). Vale o PCAP.
 #   - a lógica que gera o conteúdo do payload: recuperam-se tamanho e cadência,
 #     não a função que os produziu.
 

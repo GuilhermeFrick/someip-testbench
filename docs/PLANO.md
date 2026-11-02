@@ -1,115 +1,143 @@
 # Plano por fases — someip-testbench
 
-Cada fase é um **marco verificável** e reduz o risco da seguinte. Decisões travadas: repo próprio,
-**malha aberta** (sem Autoware nesta etapa), nós de comunicação em **C++**, camada CARLA em Python.
+Reescrito em **2026-11-02**. A versão anterior colocava o CARLA como próximo passo e tratava os
+ataques como injeção genérica. Três fatos mudaram a ordem:
 
-A ordem é deliberada: primeiro provamos que a **pilha SOME/IP real funciona**, depois ancoramos na
-**física**, depois **atacamos**, e só então ligamos a cadeia de **Security Event**. Cada fase produz
-algo utilizável mesmo que a seguinte atrase.
+1. a bancada já **reproduz o barramento do Kim** (9 ECUs, um binário, matriz recuperada do dataset);
+2. os ataques do dataset foram **medidos no fio** e são ataques de **Service Discovery** feitos por
+   aplicações vsomeip, não rajadas coladas (`tools/attack_flows.py`);
+3. a injeção pós-captura **não reproduz esse mecanismo**, e o resultado de detecção obtido com ela
+   foi invalidado (`experiments/eval-pcap/DETECCAO.md`).
 
----
+## Decisões travadas
 
-## Fase 0 — Esqueleto da pilha
+- **O ataque acontece no barramento vivo.** Cada atacante é uma ECU com IP próprio, rodando vsomeip,
+  e só faz o que uma ECU comprometida faria seguindo o SOME/IP. Nada que a pilha real não permita.
+- **Os atacantes reproduzem o que o dataset contém**, medido no PCAP: mecanismo, IPs, transporte.
+- **O IDS lê o fio** (captura na bridge e sensor nos grupos multicast), nunca um log escrito pelos nós.
+- **Rótulo pelo MAC do container atacante.** O IP de origem não basta: no MITM multi do dataset o
+  atacante forja o IP da VDE (100 930 `StopOffer`), e a regra por IP do dataset rotula esses quadros
+  como normais. A bancada registra também o que a regra por IP daria, para comparar com o dataset.
+- **Duas redes**: `bus`, capturada, e `ctrl`, nunca capturada. Todo comando de controle passa pela `ctrl`.
+- **CARLA por último.** Ele troca o conteúdo do payload, não a estrutura da bancada.
+- **Interface gráfica entra no escopo** (antes declarada fora): modelar, controlar e observar, como o
+  CANoe, mas só depois que exista algo vivo para mostrar.
 
-**Objetivo:** um provedor e um consumidor em C++ trocando um evento SOME/IP real, gerados a partir
-da matriz de comunicação.
+## O barramento de referência
 
-- Escrever o `platform/comm_matrix.yaml` mínimo: 1 serviço, 1 evento, 2 nós.
-- `tools/gen_config.py`: matriz para config vsomeip e headers C++.
-- `libecu`: `Skeleton` e `Proxy` mínimos sobre vsomeip.
-- Docker Compose com a rede `bus` (multicast habilitado) e 2 containers.
+| IP | ECU | papel | serviço / assinaturas |
+|---|---|---|---|
+| .2 | ADAS | consumidor | VDE, IMU, GPS |
+| .3 | CLU | consumidor | VDE |
+| .4 | GPS | provedor | 0x1003 |
+| .5 | IMU | provedor | 0x1002 |
+| .6 | NAV | consumidor | IMU, GPS |
+| .7 | PT | consumidor | VDE |
+| .8 | STE | consumidor | IMU |
+| .9 | TEL | consumidor | VDE, IMU, GPS |
+| .10 | VDE | provedor | 0x1001 |
 
-**Critério de pronto:** o Wireshark mostra o **SOME/IP-SD** anunciando e descobrindo o serviço, e
-as notificações sendo **decodificadas corretamente** pelo dissector.
+Identidade recuperada por conteúdo (`tools/decode_payload_semantics.py`) e confirmada pela ordem
+alfabética dos IPs. A figura 2 do artigo do Kim difere do PCAP em duas ligações (ADAS também recebe
+GPS; PT não recebe IMU). Vale o PCAP.
 
-**Risco:** multicast do SD dentro do Docker e corretude da serialização. São os dois pontos que
-costumam travar, por isso vêm primeiro.
+## Os ataques, como estão no dataset
 
----
-
-## Fase 1 — Bancada benigna ancorada no CARLA
-
-**Objetivo:** tráfego SOME/IP realista produzido pela dinâmica de um veículo simulado.
-
-- Nós: `gnss_ecu`, `imu_ecu`, `lidar_ecu`, `adas_ecu`, `hmi_ecu`.
-- `carla_feeder.py` em modo síncrono, alimentando os sensores pela rede `ctrl`.
-- `adas_ecu` consome os três sensores e publica estado de AEB (função derivada, com métodos além de eventos).
-- `monitor` capturando a rede `bus`.
-
-**Critério de pronto:** um PCAP **benigno** de alguns minutos, com pub/sub e request/response, em
-que o padrão temporal do tráfego acompanha a condução (acelerações, curvas, frenagens).
-
-**Risco:** desempenho do LiDAR (volume de dados). Mitigação: publicar uma nuvem reduzida ou apenas
-o obstáculo mais próximo, que é o que o ADAS consome de fato.
-
----
-
-## Fase 2 — Injeção de ataques e ground truth
-
-**Objetivo:** dataset rotulado, gerado em ambiente vivo, no mesmo formato da primeira contribuição.
-
-- `attacker_ecu` com as duas superfícies: via serviço (MITM, spoof) e on-the-wire (DoS, Fuzzy).
-- Cenários em YAML, herdando a taxonomia e o `trigger_rate` do `someip-traffic-simulator`.
-- `tools/label_pcap.py`: PCAP mais timeline mais mapa IP para papel, gerando rótulo por pacote.
-
-**Critério de pronto:** o extrator `content_ext` consome o PCAP gerado **sem adaptação** e o
-detector da primeira contribuição produz métricas por classe sobre ele.
-
-**Risco:** viés sintético dos ataques (padrão temporal perfeito demais). Mitigação: jitter e
-variação de taxa, como já previsto no gerador.
+| ataque | atacante | mecanismo medido |
+|---|---|---|
+| DoS | .11 | oferta falsa de 0x1001 **a cada 20 ms**; ADAS, CLU, PT e TEL assinam e **abrem o TCP** para o atacante; inundação de notificações pela conexão. UDP 59% (todo SD), TCP 41% |
+| Fuzzy | .17 | só `OfferService` de ~400 serviços aleatórios (0x20xx), com endpoint próprio. 100% UDP, sem notificação |
+| MITM single | .13 | oferta falsa de 0x1001 a cada 10 ms e `StopOffer` em nome da VDE direto à ADAS; só a ADAS assina e conecta nele. UDP 80% (todo SD), TCP 20% |
+| MITM multi | .14 + .15 | .14 assina a VDE como cliente, repassa os eventos pelo serviço 0x100B ao .15; o .15 oferece 0x1001 e manda à ADAS `StopOffer` com o **IP da VDE forjado**; a ADAS conecta no .15. 98% TCP. Dois atacantes |
 
 ---
 
-## Fase 3 — Cadeia Security Event / IdsM
+## Fase A — ECUs atacantes vivas
 
-**Objetivo:** fechar o elo que o artigo deixou como trabalho futuro: a classe predita vira um
-Security Event tipado, consumido por um IdsM.
+**Objetivo:** os quatro ataques acontecendo no barramento, como aplicações vsomeip sobre o
+`NodeRuntime`, com os IPs do dataset.
 
-São quatro frentes, em ordem de esforço:
+**A0. Riscos, testados antes de qualquer código de ataque:**
 
-1. **Extrator das 16 features em C++** (o caminho crítico). Tem estado: janelas deslizantes por
-   fluxo e por origem, *byte-models*, Hamming entre *payloads*. Já nascer com a *source diversity*
-   incremental O(1).
-2. **Exportar os dados que o extrator precisa**: tabelas de log-probabilidade dos *byte-models* e os
-   vetores `xmin`/`xmax` da normalização.
-3. **Modelo via TL2cgen**, compilado junto no build do modelo selecionado.
-4. **`libidsm`**: mapear a classe para `SecurityEventDefinition` e reportar.
-- `libidsm`: `EventReporter::ReportEvent(...)` e o IdsM com cadeia de filtros (taxa, agregação, limiar).
-- Reporter: log estruturado e, opcionalmente, um serviço SOME/IP representando o SOC.
+| risco | como testar | se falhar |
+|---|---|---|
+| o vsomeip 3.6.4 aceitar dois nós oferecendo o mesmo serviço e instância | dois provedores de 0x1001 e um consumidor, em 3 containers | investigar a versão usada no dataset; ajustar a configuração |
+| o payload das notificações do atacante (cópia da VDE ou conteúdo próprio) | estender `attack_flows.py` para comparar os bytes com os da VDE | nenhum: só define o que o atacante publica |
+| o passo do MITM single em que o atacante manda à ADAS uma oferta com o endpoint da VDE | ver se o vsomeip produz isso sozinho; senão, montar o quadro SD à mão | quadro SD válido montado fora da API |
 
-**Critério de pronto:** dois testes de paridade passando, e um cenário de ataque produzindo um
-**log de eventos qualificados** alinhado temporalmente com a janela do ataque injetado.
+**Resultado da A0 (02/11, `platform/dup-offer`):**
 
-**Paridade é critério de aceite, em dois níveis:**
+- risco 1: o vsomeip 3.6.4 **aceita** a segunda oferta e as vítimas assinam nela. Mas, nesta versão,
+  a vítima mantém o TCP com a VDE e a oferta falsa a cada 20 ms só **derruba a conexão legítima**
+  (2 059 vezes em 45 s; a ADAS perde dois terços das notificações). No dataset as vítimas migram para
+  o atacante. Próximo: repetir com versões anteriores do vsomeip;
+- risco 3: o passo é um `StopOffer` em nome da VDE (do IP do atacante no MITM single, com IP forjado
+  no MITM multi). Não sai da API do vsomeip: o atacante precisa de um **emissor de SD bruto**;
+- risco 2 (payload do atacante): ainda não medido.
 
-- *Features*: o mesmo PCAP produz as **mesmas 16 features** em Python e em C++. Esse é o teste que
-  pega os erros sutis (janela que começa cheia, ordem de atualização diferente).
-- *Classe*: a predição em C++ bate com a do `predict_proba`. A `libxgboost` serve de oráculo.
+**A1–A4.** Fuzzy, DoS, MITM single e MITM multi, nessa ordem (do que só envia ao que encadeia).
 
-**Ganho colateral:** a inferência cai de cerca de **0,5 ms** por chamada, medidos na primeira
-contribuição, para **1,39 µs**. A causa não era a fronteira Python, que respondia por cerca de 25%,
-nem o caminho de uma linha da `libxgboost`: era o **tamanho do modelo**. A mesma biblioteca caiu de
-533 para 51 µs só trocando o modelo. Medição em `experiments/bench-inference/RESULTADOS.md`.
+**Critério de aceite, por ataque:** `tools/attack_flows.py` sobre a captura da bancada produz a mesma
+assinatura que sobre o PCAP do dataset: mesmos tipos de entrada SD, mesmo lado abrindo o TCP, mesmas
+vítimas, proporção UDP/TCP a até 10 pontos percentuais.
 
-**Segundo oráculo:** o **avaliador compacto** (modelo como tabelas `const` percorridas por laço
-limitado) é **2x mais lento** que o TL2cgen com o modelo adotado, então não entra no caminho quente.
-Mas tem **paridade exata** (0,0 contra 3,87e-07) e **WCET limitado por construção**, o que o torna um
-segundo oráculo independente, ao lado da `libxgboost`. Não é papel menor: foi a conferência cruzada
-que revelou que o `base_score` deste modelo é um vetor por classe, e não um escalar, erro que
-passaria silencioso. Evidência em `experiments/bench-inference/RESULTADOS.md`.
+## Fase B — Rodada única
 
----
+**Objetivo:** 9 ECUs + `ids_sensor_node` + atacante na mesma rodada, com janela de ataque
+(aquecimento, ataque de `START` a `START+DUR`, recuperação).
 
-## Fase 4 — Empacotamento como ferramenta
+**Critério de aceite:** o ataque sai no fio, o PCAP rotulado por IP é gerado, e os security events do
+sensor aparecem dentro da janela de ataque.
 
-**Objetivo:** virar artefato de pesquisa reutilizável e citável.
+## Fase C — Medição de detecção, refeita ao vivo
 
-- CLI única: descrever cenário, subir a bancada, capturar, rotular e avaliar.
-- Docker Compose completo, documentação de uso e um exemplo reprodutível de ponta a ponta.
-- Modos de uso: **gerar dataset**, **testar um modelo de IDS**, **rodar um cenário de ataque**.
+**Objetivo:** recall, precisão e falso positivo por classe sobre as rodadas da Fase B, com o mesmo
+`score_pcap` e o controle sobre os PCAPs reais.
 
-**Critério de pronto:** alguém que não participou do projeto reproduz um dataset rotulado seguindo
-apenas o README.
+**Critério de aceite:** um `DETECCAO.md` novo, substituindo o invalidado, com as rodadas
+reproduzíveis por script. Medir também o atraso entre o início do ataque e o primeiro security event.
+
+## Fase D — Controle pela rede `ctrl`
+
+**Objetivo:** ligar, desligar e ajustar cada atacante durante a rodada (taxa, vítima, número de
+serviços falsos), com registro de cada comando e seu instante.
+
+**Critério de aceite:** nenhum quadro de controle na captura do barramento; o registro de comandos
+permite alinhar o início do ataque com a detecção.
+
+## Fase E — Painel de observação
+
+**Objetivo:** topologia das 9 ECUs com as ligações medidas, tráfego lido do fio, ECU marcada quando
+cai numa oferta falsa, security events em tempo de execução, botões da Fase D.
+
+**Critério de aceite:** mostra uma rodada da Fase B do início ao fim.
+
+## Fase F — Editor da matriz
+
+**Objetivo:** modelar nós, serviços, eventos e assinaturas sobre o `comm_matrix.yaml` (o equivalente
+ao Communication Setup do CANoe), com o botão "gerar e subir".
+
+**Critério de aceite:** o arquivo editado passa no `tests/check_comm_matrix.py`, gera a configuração
+e sobe os nós. Uma matriz diferente da do Kim é marcada como **variação** na rodada.
+
+## Fase G — CARLA
+
+**Objetivo:** conteúdo de condução realista no payload dos provedores (GPS, IMU, VDE), pela rede `ctrl`.
+
+**Critério de aceite:** falso positivo e detecção medidos de novo, com e sem CARLA.
+
+## Fase H — Empacotamento
+
+CLI única (descrever cenário, subir, capturar, rotular, avaliar), `docker-compose`, CI e um exemplo
+reproduzível por quem não participou do projeto.
+
+## Opcionais, depois da Fase C
+
+- **Features comportamentais por janela** (taxa de ofertas no SD, IPs de origem distintos, pico de
+  taxa), comparadas às de conteúdo: testam a hipótese de que comportamento transfere melhor.
+- **SD autenticado como linha de base de defesa:** rodar os ataques com e sem autenticação da oferta
+  e medir prevenção e detecção lado a lado. Só com esquema padronizado ou documentado, não um sufixo
+  fora do protocolo.
 
 ---
 
@@ -117,15 +145,39 @@ apenas o README.
 
 | Risco | Mitigação |
 |---|---|
-| Multicast do SD não funcionar no Docker | Validar na Fase 0, antes de qualquer outra coisa; alternativa é rede `macvlan` |
-| Serialização SOME/IP incorreta | O dissector do Wireshark é o critério de aceite, desde a Fase 0 |
-| Alinhamento temporal entre ataque, captura e detecção | Clock único do CARLA em modo síncrono, carimbado em todos os componentes |
-| Escopo inflar rumo a "reimplementar o CANoe" | O escopo é SOME/IP, sem GUI, sem CAPL, sem hardware; está declarado no README |
-| Tráfego de controle contaminar o dataset | Duas redes Docker separadas, com a captura restrita à rede `bus` |
+| Rótulo por IP marcar ataque com IP forjado como normal | Rótulo pelo MAC; a regra por IP fica só como comparação |
+| Atacante fazer algo que a pilha real não permite | A0 testa o comportamento do vsomeip; aceite da Fase A compara com o dataset |
+| Tráfego de controle contaminar a captura | Rede `ctrl` separada; aceite da Fase D exige zero quadros de controle no `bus` |
+| Interface crescer antes de haver o que mostrar | Painel só depois da Fase B; editor só depois do painel |
+| Editar a matriz do Kim e tratar variação como reprodução | O editor marca a rodada como variação |
+| Sub-rede do dataset ocupada no host | `SUBNET=` remapeia preservando o último octeto; `attack_flows.py` precisa do conjunto benigno remapeado |
+
+## Pendências de fundo, que não bloqueiam
+
+- 85 dos 108 falsos positivos restantes são Service Discovery (serviço 0xFFFF).
+- O `TrainingRunMismatch` segue sem produtor.
+- O `run.sh` do sensor não linka o C99 do TL2cgen ao nó; roda com o avaliador compacto.
+- Reproduzir o macro-F1 de 0,9689 de ponta a ponta com a cadeia C++ sobre o dataset.
 
 ---
 
-## ✅ Fase 0 concluída
+## Registro do que já foi concluído
+
+| marco | resultado | onde |
+|---|---|---|
+| Pilha SOME/IP real no Docker | SD sobe com rota multicast e `NET_ADMIN`; dissector decodifica | `platform/sd-smoke`, `platform/node-handshake` |
+| Cadeia do sensor em C++ | paridade bit a bit: 14 375 392 quadros, 0 divergências | `platform/parity-dataset` |
+| Artefatos do treino | recuperados e verificados | `docs/ARTEFATOS.md` |
+| Sensor no barramento | captura, classifica e reporta ao IdsM | `platform/sensor-live` |
+| Reprodução do barramento do Kim | 9 ECUs de um binário; 98% TCP contra 99,1% | `platform/bus-kim` |
+| Falso positivo na bancada | 0,0272% no dataset contra 4,11% na bancada (melhor caso); o conteúdo do payload explica 26× (9,42% → 0,3641%) | `experiments/eval-pcap/RESULTADOS.md` |
+| Identidade das 9 ECUs | recuperada por conteúdo e ordem dos IPs | `tools/decode_payload_semantics.py` |
+| Mecanismo dos ataques | medido nos 4 PCAPs de ataque | `tools/attack_flows.py` |
+| Detecção por injeção pós-captura | **invalidada** | `experiments/eval-pcap/DETECCAO.md` |
+
+O detalhamento original de cada marco, escrito na época, segue abaixo sem alterações.
+
+### ✅ Fase 0 concluída
 
 | Item da Fase 0 | Estado |
 |---|---|
@@ -147,7 +199,7 @@ serialização (o dissector decodifica, com os identificadores da matriz).
 O `docker-compose.yml` fica para a Fase 1, onde passa a haver cinco nós e duas redes. Com dois nós
 o `run.sh` do degrau basta, e um compose agora seria reescrito na fase seguinte.
 
-## ✅ Caminho crítico da Fase 1 vencido: a cadeia de extração, com paridade
+### ✅ Caminho crítico da Fase 1 vencido: a cadeia de extração, com paridade
 
 O caminho crítico da Fase 1 não eram os nós — esses são variações do `gnss_ecu`, cujo molde já
 está provado. Era o **sensor em C++**, porque a paridade com o Python se ganha ou se perde nele, e
@@ -181,7 +233,7 @@ Dois achados que só uma rodada desse tamanho dava:
    aparência plausível. Foi o contador de despejo, exigido em zero, que virou isso num resultado;
 2. **custo:** a mesma travessia leva 1255 s em Python e **6,3 s** em C++, uns 200×.
 
-## ✅ Artefatos do treino recuperados e verificados (01/11)
+### ✅ Artefatos do treino recuperados e verificados (01/11)
 
 Os cinco artefatos foram recuperados da VM de treino. O `Classifier` não roda mais contra um modelo
 de prova: roda contra o **modelo adotado** (125 árvores, 25 rodadas, `base_score` em vetor por
@@ -193,7 +245,7 @@ As datas dos artefatos **não eram da mesma rodada**, e isso foi verificado em v
 `bytemodels.npz` fica dentro de 1 ULP. Ver [ARTEFATOS](ARTEFATOS.md), que também registra o defeito
 de versão do xgboost que quase embarcou um `base_score` errado em silêncio.
 
-## ✅ O sensor está no barramento (01/11)
+### ✅ O sensor está no barramento (01/11)
 
 O `ids_sensor_node` captura, classifica com o modelo adotado e reporta ao IdsM, em
 [`platform/sensor-live`](../platform/sensor-live/README.md). Ele entra nos grupos multicast que a
@@ -210,21 +262,3 @@ vocabulário em que os modelos de bytes foram ajustados.
 macro-F1 é 0,9689. É o resultado que só aparece encostando o IDS num barramento de verdade, e é
 exatamente o que a Fase 1 existe para resolver — tráfego benigno ancorado no CARLA, gerado *neste*
 barramento, para reajustar modelos de bytes e limites.
-
-## Próximo passo imediato
-
-**Fase 1: o tráfego benigno ancorado no CARLA.** Os nós restantes (`imu_ecu`, `lidar_ecu`,
-`adas_ecu`) e o `scenario/carla_feeder.py` pela rede `ctrl`, separada da `bus`. O critério de
-pronto continua sendo um PCAP benigno de alguns minutos em que o padrão temporal acompanha a
-condução.
-
-Com esse PCAP em mãos abre-se o caminho que o degrau do sensor apontou: **reajustar os modelos de
-bytes e os limites de normalização sobre o barramento da bancada**, e medir de novo a taxa de falso
-positivo. Esse par de números, antes e depois, é um resultado publicável.
-
-Pendências de fundo, que não bloqueiam:
-
-- o **`TrainingRunMismatch` segue sem produtor**. Fechá-lo exige uma marca de rodada nos três
-  artefatos; hoje a consistência foi verificada à mão, uma vez, e não é verificável em runtime;
-- o `run.sh` do sensor não linka o C99 do TL2cgen ao nó, então ele roda com o avaliador compacto.
-  O nó prefere o gerado quando presente e diz qual está usando.

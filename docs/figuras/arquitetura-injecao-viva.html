@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bancada com injeção ao vivo</title>
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface2:#f1f1ee; --ink:#1d1d1b; --muted:#5f5f5a; --line:#c9c9c2;
+  --ok:#2f7d4f; --ok-bg:#e6f2ea; --atk:#c0392b; --atk-bg:#fbe9e7; --later:#8a8a84; --later-bg:#efefec;
+  --sd:#2a64a8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161615; --surface:#1f1f1d; --surface2:#262624; --ink:#ececE8; --muted:#a3a39c; --line:#44443f;
+    --ok:#6cc08f; --ok-bg:#1d3326; --atk:#ef7a6c; --atk-bg:#3a1f1b; --later:#8f8f88; --later-bg:#2a2a27;
+    --sd:#7fb0ea;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161615; --surface:#1f1f1d; --surface2:#262624; --ink:#ececE8; --muted:#a3a39c; --line:#44443f;
+  --ok:#6cc08f; --ok-bg:#1d3326; --atk:#ef7a6c; --atk-bg:#3a1f1b; --later:#8f8f88; --later-bg:#2a2a27;
+  --sd:#7fb0ea;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:19px;margin:44px 0 10px}
+h3{font-size:16px;margin:0 0 6px}
+p{margin:6px 0 10px}
+.sub{color:var(--muted);margin:0 0 18px}
+.rule{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--atk);border-radius:8px;padding:14px 16px;margin:18px 0}
+.rule b{color:var(--atk)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 4px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:16px;height:12px;border-radius:3px;display:inline-block;border:1.5px solid}
+.sw.ok{background:var(--ok-bg);border-color:var(--ok)}
+.sw.atk{background:var(--atk-bg);border-color:var(--atk)}
+.sw.later{background:var(--later-bg);border-color:var(--later);border-style:dashed}
+figure{margin:12px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-size:13px;color:var(--muted);margin-top:8px}
+svg text{fill:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+svg .t{font-size:13px}
+svg .ts{font-size:11.5px}
+svg .tb{font-size:13px;font-weight:600}
+svg .tm{fill:var(--muted)}
+svg .ta{fill:var(--atk)}
+svg .tsd{fill:var(--sd)}
+svg .ok{fill:var(--ok-bg);stroke:var(--ok);stroke-width:1.4}
+svg .atk{fill:var(--atk-bg);stroke:var(--atk);stroke-width:1.6}
+svg .later{fill:var(--later-bg);stroke:var(--later);stroke-width:1.3;stroke-dasharray:6 4}
+svg .frame{fill:none;stroke:var(--line);stroke-width:1.2}
+svg .ln{stroke:var(--ink);stroke-width:1.4;fill:none}
+svg .la{stroke:var(--atk);stroke-width:1.8;fill:none}
+svg .lsd{stroke:var(--sd);stroke-width:1.6;fill:none;stroke-dasharray:5 4}
+svg .lane{stroke:var(--line);stroke-width:1.2;stroke-dasharray:3 4}
+svg .mk{fill:var(--ink)}
+svg .mka{fill:var(--atk)}
+svg .mksd{fill:var(--sd)}
+svg .mkg{fill:var(--ok)}
+svg .mkl{fill:var(--later)}
+svg .lg{stroke:var(--ok);stroke-width:2.2;fill:none}
+svg .ll{stroke:var(--later);stroke-width:1.6;fill:none;stroke-dasharray:6 5}
+svg .tg{fill:var(--ok);font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card svg{width:100%;height:auto;display:block;margin:6px 0}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:2px}
+.tag.atk{background:var(--atk-bg);color:var(--atk)}
+.tag.ok{background:var(--ok-bg);color:var(--ok)}
+.tag.later{background:var(--later-bg);color:var(--muted)}
+.why{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--ok-bg);font-size:14px}
+.why b{color:var(--ok)}
+.chk{margin-top:8px;padding:10px 12px;border-radius:8px;background:var(--surface2);font-size:14px}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:4px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+.ts{font-size:13px;color:var(--muted)}
+code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(--surface2);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+<h1>Bancada SOME/IP com injeção ao vivo</h1>
+<p class="sub">Arquitetura projetada para a C2: o injetor entra no barramento como mais um nó, e o ataque acontece no fio, durante a simulação. O cenário CARLA fica por último.</p>
+
+<div class="rule">
+<b>Regra do projeto:</b> o injetor só faz o que uma ECU comprometida, ligada à mesma rede Ethernet e com IP próprio, conseguiria fazer de verdade seguindo o SOME/IP. O que torna os quatro cenários possíveis é uma propriedade real do protocolo: <b>sem SecOC, o SOME/IP e o Service Discovery não autenticam a origem</b>. Qualquer nó pode anunciar, assinar e enviar mensagens. Nada aqui depende de um comportamento que a pilha real não permitiria.
+</div>
+
+<div class="rule" style="border-left-color:var(--sd)"><b style="color:var(--sd)">Correção de 02/11:</b> os ataques do dataset são ataques de <b>Service Discovery</b> (oferta falsa e sequestro de assinatura), medidos na seção 4. A injeção pós-captura usada antes reproduzia rajadas coladas, não esse mecanismo, então o resultado de detecção anterior não vale e será refeito ao vivo.</div>
+
+<div class="legend">
+<span><i class="sw ok"></i> já existe e roda</span>
+<span><i class="sw atk"></i> a construir agora</span>
+<span><i class="sw later"></i> por último (CARLA)</span>
+</div>
+
+<h2>1. Arquitetura</h2>
+<figure>
+<svg viewBox="0 0 960 690" role="img" aria-label="Arquitetura: barramento com 9 nós e injetores com IP próprio; TAP na bridge gera PCAP rotulado por IP; sensor IDS ao vivo gera security events.">
+<defs>
+<marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+<marker id="mr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+</defs>
+
+<rect x="40" y="16" width="880" height="50" rx="8" class="later"/>
+<text x="480" y="38" text-anchor="middle" class="tb">Cenário: CARLA + carla-client (rede ctrl, nunca capturada)</text>
+<text x="480" y="56" text-anchor="middle" class="ts tm">por último: troca o payload sintético por sinal de condução</text>
+<line x1="480" y1="66" x2="480" y2="98" class="ln" stroke-dasharray="5 4" marker-end="url(#ma)"/>
+<text x="490" y="88" class="ts tm">payload dos provedores (futuro)</text>
+
+<rect x="40" y="102" width="880" height="320" rx="10" class="frame"/>
+<text x="56" y="124" class="tb">Barramento SOME/IP: rede Docker, a bridge funciona como switch</text>
+<text x="56" y="142" class="ts tm">as 9 ECUs do Kim, matriz recuperada do dataset · vsomeip 3.6.4 · um binário (generic_ecu) para as 9</text>
+
+<text x="70" y="166" class="ts tm">provedores (publicam)</text>
+<rect x="70" y="172" width="150" height="60" rx="7" class="ok"/>
+<text x="145" y="191" text-anchor="middle" class="tb">VDE</text>
+<text x="145" y="207" text-anchor="middle" class="ts">Vehicle Dynamics</text>
+<text x="145" y="224" text-anchor="middle" class="ts tm">.10 · oferece 0x1001</text>
+<rect x="236" y="172" width="150" height="60" rx="7" class="ok"/>
+<text x="311" y="191" text-anchor="middle" class="tb">IMU</text>
+<text x="311" y="207" text-anchor="middle" class="ts">sensor inercial (rumo)</text>
+<text x="311" y="224" text-anchor="middle" class="ts tm">.5 · oferece 0x1002</text>
+<rect x="402" y="172" width="150" height="60" rx="7" class="ok"/>
+<text x="477" y="191" text-anchor="middle" class="tb">GPS</text>
+<text x="477" y="207" text-anchor="middle" class="ts">posição x, y + velocidade</text>
+<text x="477" y="224" text-anchor="middle" class="ts tm">.4 · oferece 0x1003</text>
+
+<line x1="70" y1="262" x2="680" y2="262" class="lsd"/>
+<text x="230" y="254" class="ts tsd">Service Discovery multicast 224.244.224.245:30490</text>
+
+<text x="70" y="288" class="ts tm">consumidores (assinam): o que cada um recebe</text>
+<rect x="70" y="294" width="92" height="60" rx="7" class="ok"/><text x="116" y="313" text-anchor="middle" class="tb">ADAS</text><text x="116" y="329" text-anchor="middle" class="ts tm">.2</text><text x="116" y="345" text-anchor="middle" class="ts">VDE·IMU·GPS</text>
+<rect x="172" y="294" width="92" height="60" rx="7" class="ok"/><text x="218" y="313" text-anchor="middle" class="tb">CLU</text><text x="218" y="329" text-anchor="middle" class="ts tm">.3 · painel</text><text x="218" y="345" text-anchor="middle" class="ts">VDE</text>
+<rect x="274" y="294" width="92" height="60" rx="7" class="ok"/><text x="320" y="313" text-anchor="middle" class="tb">NAV</text><text x="320" y="329" text-anchor="middle" class="ts tm">.6 · navegação</text><text x="320" y="345" text-anchor="middle" class="ts">IMU·GPS</text>
+<rect x="376" y="294" width="92" height="60" rx="7" class="ok"/><text x="422" y="313" text-anchor="middle" class="tb">PT</text><text x="422" y="329" text-anchor="middle" class="ts tm">.7 · powertrain</text><text x="422" y="345" text-anchor="middle" class="ts">VDE</text>
+<rect x="478" y="294" width="92" height="60" rx="7" class="ok"/><text x="524" y="313" text-anchor="middle" class="tb">STE</text><text x="524" y="329" text-anchor="middle" class="ts tm">.8 · direção</text><text x="524" y="345" text-anchor="middle" class="ts">IMU</text>
+<rect x="580" y="294" width="92" height="60" rx="7" class="ok"/><text x="626" y="313" text-anchor="middle" class="tb">TEL</text><text x="626" y="329" text-anchor="middle" class="ts tm">.9 · telemática</text><text x="626" y="345" text-anchor="middle" class="ts">VDE·IMU·GPS</text>
+
+<line x1="100" y1="232" x2="100" y2="292" class="ln" marker-end="url(#ma)"/>
+<text x="106" y="248" class="ts tm">notificações</text>
+
+<rect x="716" y="170" width="186" height="176" rx="9" class="atk"/>
+<text x="809" y="194" text-anchor="middle" class="tb ta">ECUs atacantes</text>
+<text x="809" y="214" text-anchor="middle" class="t">IP próprio, fora do</text>
+<text x="809" y="231" text-anchor="middle" class="t">conjunto benigno</text>
+<text x="809" y="256" text-anchor="middle" class="ts">.11 DoS · .13 MITM-s · .17 Fuzzy</text>
+<text x="809" y="274" text-anchor="middle" class="ts">.14 + .15 MITM-m</text>
+<text x="809" y="298" text-anchor="middle" class="ts tm">aplicações vsomeip (NodeRuntime)</text>
+<text x="809" y="316" text-anchor="middle" class="ts tm">oferecem, assinam, notificam</text>
+<text x="809" y="334" text-anchor="middle" class="ts tm">janela: ATTACK, START, DUR</text>
+<line x1="716" y1="262" x2="684" y2="262" class="la" marker-end="url(#mr)"/>
+<line x1="716" y1="320" x2="676" y2="320" class="la" marker-end="url(#mr)"/>
+<line x1="716" y1="200" x2="556" y2="200" class="la" marker-end="url(#mr)"/>
+<text x="574" y="172" class="ts ta">ofertas falsas no SD,</text>
+<text x="574" y="188" class="ts ta">notificações às vítimas</text>
+
+<text x="56" y="406" class="ts tm">todo quadro do barramento passa pela interface da bridge (br-xxxx)</text>
+
+<line x1="240" y1="422" x2="240" y2="458" class="ln" marker-end="url(#ma)"/>
+<line x1="710" y1="422" x2="710" y2="458" class="ln" marker-end="url(#ma)"/>
+<text x="250" y="446" class="ts tm">espelho da bridge</text>
+<text x="720" y="446" class="ts tm">entra nos grupos por IGMP + captura</text>
+
+<rect x="40" y="462" width="400" height="44" rx="7" class="ok"/>
+<text x="240" y="489" text-anchor="middle" class="t">TAP: tcpdump na bridge (--network host)</text>
+<line x1="240" y1="506" x2="240" y2="524" class="ln" marker-end="url(#ma)"/>
+<rect x="40" y="528" width="400" height="44" rx="7" class="atk"/>
+<text x="240" y="548" text-anchor="middle" class="t">PCAP + rótulo pelo MAC do atacante</text>
+<text x="240" y="564" text-anchor="middle" class="ts tm">o IP pode ser forjado; o MAC não engana</text>
+<line x1="240" y1="572" x2="240" y2="590" class="ln" marker-end="url(#ma)"/>
+<rect x="40" y="594" width="400" height="44" rx="7" class="ok"/>
+<text x="240" y="614" text-anchor="middle" class="t">score_pcap (offline)</text>
+<text x="240" y="630" text-anchor="middle" class="ts tm">recall, precisão, F1, matriz de confusão</text>
+
+<rect x="520" y="462" width="400" height="44" rx="7" class="ok"/>
+<text x="720" y="489" text-anchor="middle" class="t">ids_sensor_node: 16 features → XGBoost (TL2cgen)</text>
+<line x1="720" y1="506" x2="720" y2="524" class="ln" marker-end="url(#ma)"/>
+<rect x="520" y="528" width="400" height="44" rx="7" class="ok"/>
+<text x="720" y="548" text-anchor="middle" class="t">IdsmDispatcher → ara::idsm::EventReporter</text>
+<text x="720" y="564" text-anchor="middle" class="ts tm">um reporter por classe de ataque</text>
+<line x1="720" y1="572" x2="720" y2="590" class="ln" marker-end="url(#ma)"/>
+<rect x="520" y="594" width="400" height="44" rx="7" class="ok"/>
+<text x="720" y="614" text-anchor="middle" class="t">security events ao vivo (sink do IdsM)</text>
+<text x="720" y="630" text-anchor="middle" class="ts tm">comparados com o rótulo por IP no fim da rodada</text>
+
+<line x1="444" y1="616" x2="516" y2="616" class="ln" stroke-dasharray="4 4" marker-start="url(#ma)" marker-end="url(#ma)"/>
+<text x="480" y="668" text-anchor="middle" class="ts tm">offline e online leem o mesmo tráfego da mesma rodada</text>
+</svg>
+<figcaption>O que muda em relação a hoje é uma caixa: o ataque deixa de ser edição do PCAP depois da captura e passa a ser feito por ECUs atacantes vivas, com os IPs do dataset. O rótulo continua sendo o IP de origem. O que está em verde já existe; a regra de rótulo por IP já está em <code>tools/label_real.py</code> e passa a ser aplicada à captura viva.</figcaption>
+</figure>
+
+<h2>2. Quem é cada nó</h2>
+<p>O PCAP carrega só IP e IDs de serviço; o artigo do Kim dá os nomes, mas não diz qual IP é qual. O mapeamento abaixo foi recuperado do próprio tráfego, com <code>tools/decode_payload_semantics.py</code>.</p>
+<div class="card scroll">
+<table>
+<tr><th>IP</th><th>ECU</th><th>Papel</th><th>Publica / recebe</th><th>Como sabemos</th></tr>
+<tr><td>.2</td><td><b>ADAS</b><br><span class="ts">assistência ao condutor</span></td><td>consumidor</td><td>recebe VDE, IMU e GPS</td><td>ordem alfabética (ver abaixo)</td></tr>
+<tr><td>.3</td><td><b>CLU</b><br>painel de instrumentos</td><td>consumidor</td><td>recebe VDE</td><td>ordem alfabética</td></tr>
+<tr><td>.4</td><td><b>GPS</b></td><td>provedor</td><td>publica 0x1003: 3 eventos</td><td>o payload é posição (x, y) em metros, seguindo uma trajetória, mais a velocidade, que vai a 0 quando o veículo para</td></tr>
+<tr><td>.5</td><td><b>IMU</b><br>sensor inercial</td><td>provedor</td><td>publica 0x1002: 4 eventos</td><td>o payload é um rumo em radianos (±π/2, π, 3π/2) que muda quando o veículo vira</td></tr>
+<tr><td>.6</td><td><b>NAV</b><br>navegação</td><td>consumidor</td><td>recebe IMU e GPS</td><td>assina exatamente o que a figura do Kim mostra</td></tr>
+<tr><td>.7</td><td><b>PT</b><br>powertrain</td><td>consumidor</td><td>recebe VDE</td><td>ordem alfabética</td></tr>
+<tr><td>.8</td><td><b>STE</b><br>direção</td><td>consumidor</td><td>recebe IMU</td><td>assina exatamente o que a figura do Kim mostra</td></tr>
+<tr><td>.9</td><td><b>TEL</b><br>telemática</td><td>consumidor</td><td>recebe VDE, IMU e GPS</td><td>assina exatamente o que a figura do Kim mostra</td></tr>
+<tr><td>.10</td><td><b>VDE</b><br>dinâmica do veículo</td><td>provedor</td><td>publica 0x1001: 4 eventos</td><td>o payload são componentes de velocidade, até 17 m/s</td></tr>
+</table>
+</div>
+<figure>
+<svg viewBox="0 0 1000 400" role="img" aria-label="Figura 2 do Kim completada pelo PCAP: três provedores, seis consumidores, uma ligação que só existe no PCAP (GPS para ADAS), uma que só existe na figura (IMU para PT) e as cinco ECUs atacantes do dataset.">
+<defs>
+<marker id="tk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+<marker id="tg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mkg"/></marker>
+<marker id="tl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mkl"/></marker>
+</defs>
+<text x="20" y="22" class="ts tm">publicam</text>
+<rect x="85" y="34" width="130" height="58" rx="7" class="ok"/><text x="150" y="58" text-anchor="middle" class="tb">GPS</text><text x="150" y="76" text-anchor="middle" class="ts tm">.4 · 0x1003</text>
+<rect x="275" y="34" width="130" height="58" rx="7" class="ok"/><text x="340" y="58" text-anchor="middle" class="tb">IMU</text><text x="340" y="76" text-anchor="middle" class="ts tm">.5 · 0x1002</text>
+<rect x="525" y="34" width="130" height="58" rx="7" class="ok"/><text x="590" y="58" text-anchor="middle" class="tb">VDE</text><text x="590" y="76" text-anchor="middle" class="ts tm">.10 · 0x1001</text>
+
+<line x1="150" y1="92" x2="92" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="150" y1="92" x2="338" y2="282" class="lg" marker-end="url(#tg)"/>
+<line x1="150" y1="92" x2="462" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="94" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="217" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="342" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="465" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="586" y2="282" class="ll" marker-end="url(#tl)"/>
+<line x1="590" y1="92" x2="344" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="468" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="590" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="712" y2="282" class="ln" marker-end="url(#tk)"/>
+<text x="226" y="200" class="ts tg">só no PCAP</text>
+<text x="478" y="200" class="ts tm">só na figura</text>
+
+<text x="20" y="276" class="ts tm">assinam</text>
+<rect x="40" y="286" width="100" height="58" rx="7" class="ok"/><text x="90" y="310" text-anchor="middle" class="tb">NAV</text><text x="90" y="328" text-anchor="middle" class="ts tm">.6</text>
+<rect x="165" y="286" width="100" height="58" rx="7" class="ok"/><text x="215" y="310" text-anchor="middle" class="tb">STE</text><text x="215" y="328" text-anchor="middle" class="ts tm">.8</text>
+<rect x="290" y="286" width="100" height="58" rx="7" class="ok"/><text x="340" y="310" text-anchor="middle" class="tb">ADAS</text><text x="340" y="328" text-anchor="middle" class="ts tm">.2</text>
+<rect x="415" y="286" width="100" height="58" rx="7" class="ok"/><text x="465" y="310" text-anchor="middle" class="tb">TEL</text><text x="465" y="328" text-anchor="middle" class="ts tm">.9</text>
+<rect x="540" y="286" width="100" height="58" rx="7" class="ok"/><text x="590" y="310" text-anchor="middle" class="tb">PT</text><text x="590" y="328" text-anchor="middle" class="ts tm">.7</text>
+<rect x="665" y="286" width="100" height="58" rx="7" class="ok"/><text x="715" y="310" text-anchor="middle" class="tb">CLU</text><text x="715" y="328" text-anchor="middle" class="ts tm">.3</text>
+
+<rect x="800" y="34" width="185" height="310" rx="9" class="atk"/>
+<text x="892" y="58" text-anchor="middle" class="tb ta">ECUs atacantes</text>
+<text x="892" y="76" text-anchor="middle" class="ts tm">no dataset, fora da figura</text>
+<text x="818" y="112" class="tb">.11</text><text x="852" y="112" class="ts">DoS</text>
+<text x="818" y="152" class="tb">.13</text><text x="852" y="152" class="ts">MITM single</text>
+<text x="818" y="192" class="tb">.14</text><text x="852" y="192" class="ts">MITM multi, elo 1</text>
+<text x="818" y="232" class="tb">.15</text><text x="852" y="232" class="ts">MITM multi, elo 2</text>
+<text x="818" y="272" class="tb">.17</text><text x="852" y="272" class="ts">Fuzzy</text>
+<text x="892" y="320" text-anchor="middle" class="ts tm">uma por cenário, IP próprio</text>
+
+<line x1="40" y1="378" x2="80" y2="378" class="ln"/><text x="88" y="382" class="ts">na figura e no PCAP</text>
+<line x1="250" y1="378" x2="290" y2="378" class="lg"/><text x="298" y="382" class="ts">só no PCAP (vale)</text>
+<line x1="450" y1="378" x2="490" y2="378" class="ll"/><text x="498" y="382" class="ts">só na figura (não aparece no tráfego)</text>
+</svg>
+<figcaption>A figura 2 do Kim refeita a partir do tráfego. As nove ECUs são as mesmas. Há uma ligação a mais (GPS para ADAS) e uma a menos (IMU para PT), e entram as cinco ECUs atacantes que o dataset tem e a figura não mostra.</figcaption>
+</figure>
+
+<div class="grid2">
+<div class="card">
+<h3>Por que o mapeamento é confiável</h3>
+<p>O texto do Kim lista as nove ECUs em ordem alfabética: ADAS, CLU, GPS, IMU, NAV, PT, STE, TEL, VDE. Se os IPs foram dados nessa ordem, .4 é GPS, .5 é IMU e .10 é VDE. Os três provedores foram identificados pelo conteúdo, sem usar essa hipótese, e batem. NAV, STE e TEL foram identificados pelas assinaturas, também sem a hipótese, e batem. São seis verificações independentes de acordo. Só ADAS, CLU e PT dependem da ordem, e ela já passou nessas seis.</p>
+</div>
+<div class="card">
+<h3>Onde a figura do Kim difere do tráfego</h3>
+<p>A figura 2 do artigo mostra a ADAS recebendo IMU e VDE; no PCAP ela recebe também GPS. Mostra o PT recebendo IMU; no PCAP ele recebe só VDE. A figura também não mostra as cinco ECUs atacantes. A figura é um esquema; a bancada segue o PCAP, que é o que foi medido de fato.</p>
+</div>
+</div>
+
+<h2>3. Linha do tempo de uma rodada</h2>
+<figure>
+<svg viewBox="0 0 960 200" role="img" aria-label="Linha do tempo: aquecimento benigno de 0 a 20 s, janela de ataque de 20 a 50 s, recuperação de 50 a 60 s; captura e sensor ativos o tempo todo.">
+<defs><marker id="mt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker></defs>
+<rect x="60" y="30" width="280" height="54" rx="6" class="ok"/>
+<text x="200" y="53" text-anchor="middle" class="tb">aquecimento benigno</text>
+<text x="200" y="72" text-anchor="middle" class="ts">SD sobe, assinaturas, tráfego normal</text>
+<rect x="340" y="30" width="420" height="54" rx="6" class="atk"/>
+<text x="550" y="53" text-anchor="middle" class="tb ta">janela de ataque (START até START+DUR)</text>
+<text x="550" y="72" text-anchor="middle" class="ts">injetor ativo; o tráfego benigno continua rodando junto</text>
+<rect x="760" y="30" width="140" height="54" rx="6" class="ok"/>
+<text x="830" y="53" text-anchor="middle" class="tb">recuperação</text>
+<text x="830" y="72" text-anchor="middle" class="ts">injetor para</text>
+<line x1="60" y1="100" x2="910" y2="100" class="ln" marker-end="url(#mt)"/>
+<text x="60" y="118" text-anchor="middle" class="ts tm">0 s</text>
+<text x="340" y="118" text-anchor="middle" class="ts tm">20 s</text>
+<text x="760" y="118" text-anchor="middle" class="ts tm">50 s</text>
+<text x="900" y="118" text-anchor="middle" class="ts tm">60 s</text>
+<line x1="60" y1="140" x2="900" y2="140" class="ln"/>
+<text x="60" y="158" class="ts">TAP captura do primeiro ao último quadro</text>
+<line x1="60" y1="172" x2="900" y2="172" class="ln"/>
+<text x="60" y="190" class="ts">ids_sensor classifica cada quadro e emite security event quando a classe não é normal</text>
+</svg>
+<figcaption>O ataque começa e termina no meio do tráfego vivo. É isso que transforma a captura em simulação: dá para medir quanto tempo o sensor leva para reagir depois do início do ataque e se ele para de alarmar quando o ataque acaba. Os tempos são parâmetros; os valores aqui são exemplo.</figcaption>
+</figure>
+
+<h2>4. Os quatro cenários, como acontecem no dataset</h2>
+<div class="rule"><b>Medido, não suposto.</b> Os mecanismos abaixo saíram de <code>tools/attack_flows.py</code> sobre os quatro PCAPs de ataque. Todos são ataques de <b>Service Discovery</b> feitos por aplicações vsomeip: o atacante <b>anuncia um serviço que não é dele</b>, e as vítimas assinam e conectam nele. Nada é colado no tráfego depois. Os IPs são os do dataset.</div>
+<p>Raias: quem envia e quem recebe. Vermelho sai do atacante, preto é tráfego de nó legítimo, azul tracejado é SD em multicast.</p>
+
+<div class="card">
+<h3>DoS <span class="tag atk">atacante .11 · ofertas a cada 20 ms · 229.932 quadros · UDP 59% (todo SD) · TCP 41% (notificações)</span></h3>
+<svg viewBox="0 0 900 360" role="img" aria-label="DoS: o .11 anuncia 0x1001 como se fosse a VDE; ADAS, CLU, PT e TEL assinam, abrem TCP para o .11 e recebem uma inundação de notificações.">
+<defs>
+<marker id="a1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a1k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+<marker id="a1s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mksd"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .11</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">vítimas</text><text x="570" y="40" text-anchor="middle" class="ts tm">ADAS, CLU, PT, TEL</text>
+<text x="810" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="810" y="40" text-anchor="middle" class="ts tm">dona legítima de 0x1001</text>
+<line x1="90" y1="48" x2="90" y2="320" class="lane"/><line x1="330" y1="48" x2="330" y2="320" class="lane"/><line x1="570" y1="48" x2="570" y2="320" class="lane"/><line x1="810" y1="48" x2="810" y2="320" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService 0x1001 (endpoint do .11)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a1r)"/>
+<text x="450" y="106" text-anchor="middle" class="ts tsd">chega a todos os nós</text>
+<line x1="330" y1="114" x2="566" y2="114" class="lsd" marker-end="url(#a1s)"/>
+<text x="330" y="146" text-anchor="middle" class="ts">② SubscribeEventgroup 0x1001</text>
+<line x1="570" y1="154" x2="94" y2="154" class="ln" marker-end="url(#a1k)"/>
+<text x="330" y="176" text-anchor="middle" class="ts">SubscribeEventgroupAck</text>
+<line x1="90" y1="184" x2="566" y2="184" class="la" marker-end="url(#a1r)"/>
+<text x="330" y="214" text-anchor="middle" class="ts">③ TCP connect .11:30501 (quem abre é a vítima)</text>
+<line x1="570" y1="222" x2="94" y2="222" class="ln" marker-end="url(#a1k)"/>
+<text x="330" y="252" text-anchor="middle" class="ts">④ NOTIFICATION 0x1001 em inundação, pela conexão</text>
+<line x1="90" y1="260" x2="566" y2="260" class="la" marker-end="url(#a1r)"/>
+<line x1="90" y1="270" x2="566" y2="270" class="la" marker-end="url(#a1r)"/>
+<text x="690" y="296" text-anchor="middle" class="ts">a VDE real continua publicando</text>
+<line x1="810" y1="304" x2="574" y2="304" class="ln" marker-end="url(#a1k)"/>
+<text x="450" y="348" text-anchor="middle" class="ts tm">duas ofertas do mesmo serviço disputam: cada vítima derruba e reabre a conexão cerca de 9.800 vezes</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> é o que qualquer aplicação vsomeip faz ao oferecer um serviço. Sem autenticação no SD, as vítimas aceitam a oferta do .11 como se fosse da VDE, e são elas que abrem a conexão. O atacante não entra em conexão alheia.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>Fuzzy <span class="tag atk">atacante .17 · 3.332 quadros · 100% UDP, só SD</span></h3>
+<svg viewBox="0 0 900 220" role="img" aria-label="Fuzzy: o .17 anuncia no SD centenas de serviços aleatórios; ninguém assina e não há notificações.">
+<defs>
+<marker id="a2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a2s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mksd"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .17</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">todos os nós</text>
+<line x1="90" y1="48" x2="90" y2="180" class="lane"/><line x1="330" y1="48" x2="330" y2="180" class="lane"/><line x1="570" y1="48" x2="570" y2="180" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService serviço aleatório (0x20xx)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a2r)"/>
+<line x1="90" y1="94" x2="326" y2="94" class="la" marker-end="url(#a2r)"/>
+<line x1="90" y1="106" x2="326" y2="106" class="la" marker-end="url(#a2r)"/>
+<text x="450" y="126" text-anchor="middle" class="ts tsd">chega a todos</text>
+<line x1="330" y1="134" x2="566" y2="134" class="lsd" marker-end="url(#a2s)"/>
+<text x="700" y="160" text-anchor="middle" class="ts tm">ninguém assina: nenhum nó usa esses serviços</text>
+<text x="450" y="208" text-anchor="middle" class="ts tm">cerca de 400 serviços diferentes, cada um com endpoint próprio; nenhuma notificação, nenhum TCP</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> anunciar um serviço é operação normal do SD. Ofertas de serviços que ninguém procura são ignoradas pelas pilhas, mas passam pelo fio.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>MITM single <span class="tag atk">atacante .13 · ofertas a cada 10 ms · 270.665 quadros · UDP 80% (todo SD) · TCP 20%</span></h3>
+<svg viewBox="0 0 900 400" role="img" aria-label="MITM single: o .13 anuncia 0x1001 se passando pela VDE; a ADAS assina e conecta no .13 e passa a receber dele; CLU, PT e TEL continuam na VDE.">
+<defs>
+<marker id="a3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a3k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .13</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">ADAS .2</text><text x="570" y="40" text-anchor="middle" class="ts tm">a vítima sequestrada</text>
+<text x="810" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="810" y="40" text-anchor="middle" class="ts tm">dona legítima de 0x1001</text>
+<line x1="90" y1="48" x2="90" y2="350" class="lane"/><line x1="330" y1="48" x2="330" y2="350" class="lane"/><line x1="570" y1="48" x2="570" y2="350" class="lane"/><line x1="810" y1="48" x2="810" y2="350" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService 0x1001 (endpoint do .13)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="114" text-anchor="middle" class="ts">② SubscribeEventgroup 0x1001</text>
+<line x1="570" y1="122" x2="94" y2="122" class="ln" marker-end="url(#a3k)"/>
+<text x="330" y="144" text-anchor="middle" class="ts">SubscribeEventgroupAck</text>
+<line x1="90" y1="152" x2="566" y2="152" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="184" text-anchor="middle" class="ts">③ TCP connect .13:30501 (quem abre é a ADAS)</text>
+<line x1="570" y1="192" x2="94" y2="192" class="ln" marker-end="url(#a3k)"/>
+<text x="330" y="224" text-anchor="middle" class="ts">④ NOTIFICATION 0x1001: a ADAS recebe do atacante</text>
+<line x1="90" y1="232" x2="566" y2="232" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="264" text-anchor="middle" class="ts">⑤ StopOffer em nome da VDE, direto à ADAS</text>
+<line x1="90" y1="272" x2="566" y2="272" class="la" marker-end="url(#a3r)"/>
+<text x="810" y="310" text-anchor="middle" class="ts tm">CLU, PT e TEL</text>
+<text x="810" y="326" text-anchor="middle" class="ts tm">seguem na VDE real</text>
+<text x="450" y="388" text-anchor="middle" class="ts tm">o .13 não assina a VDE: diz à ADAS que a VDE parou, e só a ADAS cai</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> oferecer um serviço que já existe e responder a assinaturas são chamadas comuns do vsomeip. A ADAS não tem como distinguir a oferta falsa da verdadeira sem SecOC.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>MITM multi <span class="tag atk">atacantes .14 e .15 · 267.049 quadros · 98% TCP</span></h3>
+<svg viewBox="0 0 900 450" role="img" aria-label="MITM multi: o .14 assina a VDE, repassa os eventos pelo serviço 0x100B ao .15, e o .15 se passa pela VDE para a ADAS.">
+<defs>
+<marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a4k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="90" y="40" text-anchor="middle" class="ts tm">fonte real</text>
+<text x="330" y="24" text-anchor="middle" class="tb ta">atacante .14</text><text x="330" y="40" text-anchor="middle" class="ts tm">elo 1: escuta</text>
+<text x="570" y="24" text-anchor="middle" class="tb ta">atacante .15</text><text x="570" y="40" text-anchor="middle" class="ts tm">elo 2: se passa pela VDE</text>
+<text x="810" y="24" text-anchor="middle" class="tb">ADAS .2</text><text x="810" y="40" text-anchor="middle" class="ts tm">vítima</text>
+<line x1="90" y1="48" x2="90" y2="400" class="lane"/><line x1="330" y1="48" x2="330" y2="400" class="lane"/><line x1="570" y1="48" x2="570" y2="400" class="lane"/><line x1="810" y1="48" x2="810" y2="400" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① assina 0x1001 + TCP connect :30501</text>
+<line x1="330" y1="82" x2="94" y2="82" class="la" marker-end="url(#a4r)"/>
+<text x="210" y="112" text-anchor="middle" class="ts">② NOTIFICATION 0x1001 real</text>
+<line x1="90" y1="120" x2="326" y2="120" class="ln" marker-end="url(#a4k)"/>
+<text x="330" y="156" text-anchor="middle" class="ts tsd">③ anuncia 0x100B (relay) no SD</text>
+<text x="450" y="192" text-anchor="middle" class="ts">④ assina 0x100B + TCP connect :30601</text>
+<line x1="570" y1="200" x2="334" y2="200" class="la" marker-end="url(#a4r)"/>
+<text x="450" y="230" text-anchor="middle" class="ts">⑤ NOTIFICATION 0x100B: o evento da VDE repassado</text>
+<line x1="330" y1="238" x2="566" y2="238" class="la" marker-end="url(#a4r)"/>
+<text x="570" y="274" text-anchor="middle" class="ts tsd">⑥ anuncia 0x1001 e manda à ADAS StopOffer com o IP da VDE forjado</text>
+<text x="690" y="310" text-anchor="middle" class="ts">⑦ ADAS assina + TCP connect .15:30501</text>
+<line x1="810" y1="318" x2="574" y2="318" class="ln" marker-end="url(#a4k)"/>
+<text x="690" y="348" text-anchor="middle" class="ts">⑧ NOTIFICATION 0x1001</text>
+<line x1="570" y1="356" x2="806" y2="356" class="la" marker-end="url(#a4r)"/>
+<text x="450" y="438" text-anchor="middle" class="ts tm">cadeia completa: VDE → .14 → (0x100B) → .15 → ADAS. São dois atacantes, não três.</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> cada passo é uma operação comum do SOME/IP: assinar como cliente, oferecer serviço, repassar evento. A cadeia toda roda numa pilha padrão, e é por isso que o dataset tem 98% de TCP: as conexões são abertas pelos próprios nós.</div>
+</div>
+
+<h2>5. O que fica de fora porque não seria possível</h2>
+<div class="card scroll">
+<table>
+<tr><th>Comportamento</th><th>Por que não</th><th>O que fazemos no lugar</th></tr>
+<tr><td>Enfiar pacote numa conexão TCP já aberta entre dois outros nós</td><td>Exige acertar sequência e ACK da sessão de outro par (sequestro de sessão), o que uma ECU comum não faz de forma confiável</td><td>O atacante anuncia o serviço e a própria vítima abre a conexão com ele. É o que o dataset mostra: os SYN saem das vítimas</td></tr>
+<tr><td>Ler o unicast entre dois outros nós</td><td>A bridge é um switch e só entrega a cada porta o que é dela. Foi o que descobrimos ao montar o TAP</td><td>Para receber eventos, o atacante assina pelo SD, como qualquer cliente (é o que o .14 faz no MITM multi)</td></tr>
+<tr><td>Fazer um consumidor processar um serviço que ele não assinou</td><td>A pilha descarta; o efeito na aplicação não aconteceria</td><td>O quadro vai ao fio mesmo assim, e é isso que o IDS mede. Não afirmamos efeito na aplicação</td></tr>
+</table>
+<p style="margin:12px 0 4px"><b>Corrigido em 02/11:</b> forjar o IP de um nó legítimo <b>está no dataset</b>. No MITM multi, o atacante .15 manda 100.930 <code>StopOffer</code> à ADAS com o IP da VDE (o MAC denuncia o .15). É possível na realidade com socket bruto, então entra no modelo de ameaça. A regra de rótulo por IP do dataset marca esses quadros como normais; na bancada o rótulo passa a ser pelo MAC do atacante.</p>
+<table style="display:none">
+</table>
+</div>
+
+<h2>6. Plano de implementação</h2>
+<p>O mesmo de <code>docs/PLANO.md</code>. Cada fase só começa quando a anterior passa no critério de aceite.</p>
+<div class="card scroll">
+<table>
+<tr><th>fase</th><th>entrega</th><th>critério de aceite</th><th>estado</th></tr>
+<tr><td><b>A</b></td><td>ECUs atacantes vivas (vsomeip, IPs do dataset). Antes, testar 3 riscos: serviço oferecido em dobro, payload do atacante, oferta com endpoint da VDE</td><td>a mesma assinatura que o dataset em <code>attack_flows.py</code>: tipos de SD, quem abre o TCP, vítimas, UDP/TCP a até 10 pontos</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>B</b></td><td>Rodada única: 9 ECUs + sensor + atacante, com janela de ataque</td><td>ataque no fio, PCAP rotulado por IP, security events dentro da janela</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>C</b></td><td>Medição de detecção refeita ao vivo</td><td>novo <code>DETECCAO.md</code>, com recall, falso positivo e atraso até o primeiro evento</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>D</b></td><td>Controle pela rede <code>ctrl</code>: ligar, desligar, ajustar</td><td>nenhum quadro de controle na captura; comandos registrados com horário</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>E</b></td><td>Painel de observação</td><td>mostra uma rodada da fase B do início ao fim</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>F</b></td><td>Editor da matriz (modelar a comunicação)</td><td>passa no <code>check_comm_matrix.py</code>, gera e sobe; marca variação</td><td><span class="tag atk">a fazer</span></td></tr>
+<tr><td><b>G</b></td><td>CARLA no payload</td><td>falso positivo e detecção medidos com e sem CARLA</td><td><span class="tag later">por último</span></td></tr>
+<tr><td><b>H</b></td><td>Empacotamento: CLI, compose, CI</td><td>alguém de fora reproduz pelo README</td><td><span class="tag later">depois</span></td></tr>
+</table>
+</div>
+<p class="sub" style="margin-top:10px">Opcionais depois da fase C: features comportamentais por janela e SD autenticado como linha de base de defesa.</p>
+
+</main>
+</body>
+</html>

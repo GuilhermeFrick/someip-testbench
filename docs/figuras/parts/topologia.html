@@ -1,0 +1,51 @@
+<figure>
+<svg viewBox="0 0 1000 400" role="img" aria-label="Figura 2 do Kim completada pelo PCAP: três provedores, seis consumidores, uma ligação que só existe no PCAP (GPS para ADAS), uma que só existe na figura (IMU para PT) e as cinco ECUs atacantes do dataset.">
+<defs>
+<marker id="tk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+<marker id="tg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mkg"/></marker>
+<marker id="tl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mkl"/></marker>
+</defs>
+<text x="20" y="22" class="ts tm">publicam</text>
+<rect x="85" y="34" width="130" height="58" rx="7" class="ok"/><text x="150" y="58" text-anchor="middle" class="tb">GPS</text><text x="150" y="76" text-anchor="middle" class="ts tm">.4 · 0x1003</text>
+<rect x="275" y="34" width="130" height="58" rx="7" class="ok"/><text x="340" y="58" text-anchor="middle" class="tb">IMU</text><text x="340" y="76" text-anchor="middle" class="ts tm">.5 · 0x1002</text>
+<rect x="525" y="34" width="130" height="58" rx="7" class="ok"/><text x="590" y="58" text-anchor="middle" class="tb">VDE</text><text x="590" y="76" text-anchor="middle" class="ts tm">.10 · 0x1001</text>
+
+<line x1="150" y1="92" x2="92" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="150" y1="92" x2="338" y2="282" class="lg" marker-end="url(#tg)"/>
+<line x1="150" y1="92" x2="462" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="94" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="217" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="342" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="465" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="340" y1="92" x2="586" y2="282" class="ll" marker-end="url(#tl)"/>
+<line x1="590" y1="92" x2="344" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="468" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="590" y2="282" class="ln" marker-end="url(#tk)"/>
+<line x1="590" y1="92" x2="712" y2="282" class="ln" marker-end="url(#tk)"/>
+<text x="226" y="200" class="ts tg">só no PCAP</text>
+<text x="478" y="200" class="ts tm">só na figura</text>
+
+<text x="20" y="276" class="ts tm">assinam</text>
+<rect x="40" y="286" width="100" height="58" rx="7" class="ok"/><text x="90" y="310" text-anchor="middle" class="tb">NAV</text><text x="90" y="328" text-anchor="middle" class="ts tm">.6</text>
+<rect x="165" y="286" width="100" height="58" rx="7" class="ok"/><text x="215" y="310" text-anchor="middle" class="tb">STE</text><text x="215" y="328" text-anchor="middle" class="ts tm">.8</text>
+<rect x="290" y="286" width="100" height="58" rx="7" class="ok"/><text x="340" y="310" text-anchor="middle" class="tb">ADAS</text><text x="340" y="328" text-anchor="middle" class="ts tm">.2</text>
+<rect x="415" y="286" width="100" height="58" rx="7" class="ok"/><text x="465" y="310" text-anchor="middle" class="tb">TEL</text><text x="465" y="328" text-anchor="middle" class="ts tm">.9</text>
+<rect x="540" y="286" width="100" height="58" rx="7" class="ok"/><text x="590" y="310" text-anchor="middle" class="tb">PT</text><text x="590" y="328" text-anchor="middle" class="ts tm">.7</text>
+<rect x="665" y="286" width="100" height="58" rx="7" class="ok"/><text x="715" y="310" text-anchor="middle" class="tb">CLU</text><text x="715" y="328" text-anchor="middle" class="ts tm">.3</text>
+
+<rect x="800" y="34" width="185" height="310" rx="9" class="atk"/>
+<text x="892" y="58" text-anchor="middle" class="tb ta">ECUs atacantes</text>
+<text x="892" y="76" text-anchor="middle" class="ts tm">no dataset, fora da figura</text>
+<text x="818" y="112" class="tb">.11</text><text x="852" y="112" class="ts">DoS</text>
+<text x="818" y="152" class="tb">.13</text><text x="852" y="152" class="ts">MITM single</text>
+<text x="818" y="192" class="tb">.14</text><text x="852" y="192" class="ts">MITM multi, elo 1</text>
+<text x="818" y="232" class="tb">.15</text><text x="852" y="232" class="ts">MITM multi, elo 2</text>
+<text x="818" y="272" class="tb">.17</text><text x="852" y="272" class="ts">Fuzzy</text>
+<text x="892" y="320" text-anchor="middle" class="ts tm">uma por cenário, IP próprio</text>
+
+<line x1="40" y1="378" x2="80" y2="378" class="ln"/><text x="88" y="382" class="ts">na figura e no PCAP</text>
+<line x1="250" y1="378" x2="290" y2="378" class="lg"/><text x="298" y="382" class="ts">só no PCAP (vale)</text>
+<line x1="450" y1="378" x2="490" y2="378" class="ll"/><text x="498" y="382" class="ts">só na figura (não aparece no tráfego)</text>
+</svg>
+<figcaption>A figura 2 do Kim refeita a partir do tráfego. As nove ECUs são as mesmas. Há uma ligação a mais (GPS para ADAS) e uma a menos (IMU para PT), e entram as cinco ECUs atacantes que o dataset tem e a figura não mostra.</figcaption>
+</figure>

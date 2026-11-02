@@ -1,5 +1,13 @@
 # Detecção na bancada: só o Fuzzy transfere
 
+> ⚠️ **RESULTADO INVALIDADO em 2026-11-02.** `tools/attack_flows.py` mediu o que os
+> atacantes do dataset fazem no fio: são ataques de **Service Discovery** (oferta
+> falsa de 0x1001, sequestro de assinatura, cadeia de relay .14 → 0x100B → .15),
+> feitos por aplicações vsomeip, com as **vítimas abrindo o TCP**. A injeção
+> pós-captura abaixo reproduzia rajadas de notificação coladas no PCAP, não esse
+> mecanismo. Os números desta página não medem transferência de detecção e não
+> devem ser citados. A medição será refeita com atacantes vivos no barramento.
+
 O `eval_pcap` mede **falso positivo** sobre tráfego benigno (ver `RESULTADOS.md`).
 Este experimento mede a outra metade — **detecção** — injetando os quatro padrões
 adversariais do baseline sobre a captura da bancada e pontuando a cadeia congelada

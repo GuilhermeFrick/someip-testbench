@@ -1,0 +1,121 @@
+<h2>4. Os quatro cenários, como acontecem no dataset</h2>
+<div class="rule"><b>Medido, não suposto.</b> Os mecanismos abaixo saíram de <code>tools/attack_flows.py</code> sobre os quatro PCAPs de ataque. Todos são ataques de <b>Service Discovery</b> feitos por aplicações vsomeip: o atacante <b>anuncia um serviço que não é dele</b>, e as vítimas assinam e conectam nele. Nada é colado no tráfego depois. Os IPs são os do dataset.</div>
+<p>Raias: quem envia e quem recebe. Vermelho sai do atacante, preto é tráfego de nó legítimo, azul tracejado é SD em multicast.</p>
+
+<div class="card">
+<h3>DoS <span class="tag atk">atacante .11 · 229.932 quadros · UDP 59% (todo SD) · TCP 41% (notificações)</span></h3>
+<svg viewBox="0 0 900 360" role="img" aria-label="DoS: o .11 anuncia 0x1001 como se fosse a VDE; ADAS, CLU, PT e TEL assinam, abrem TCP para o .11 e recebem uma inundação de notificações.">
+<defs>
+<marker id="a1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a1k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+<marker id="a1s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mksd"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .11</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">vítimas</text><text x="570" y="40" text-anchor="middle" class="ts tm">ADAS, CLU, PT, TEL</text>
+<text x="810" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="810" y="40" text-anchor="middle" class="ts tm">dona legítima de 0x1001</text>
+<line x1="90" y1="48" x2="90" y2="320" class="lane"/><line x1="330" y1="48" x2="330" y2="320" class="lane"/><line x1="570" y1="48" x2="570" y2="320" class="lane"/><line x1="810" y1="48" x2="810" y2="320" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService 0x1001 (endpoint do .11)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a1r)"/>
+<text x="450" y="106" text-anchor="middle" class="ts tsd">chega a todos os nós</text>
+<line x1="330" y1="114" x2="566" y2="114" class="lsd" marker-end="url(#a1s)"/>
+<text x="330" y="146" text-anchor="middle" class="ts">② SubscribeEventgroup 0x1001</text>
+<line x1="570" y1="154" x2="94" y2="154" class="ln" marker-end="url(#a1k)"/>
+<text x="330" y="176" text-anchor="middle" class="ts">SubscribeEventgroupAck</text>
+<line x1="90" y1="184" x2="566" y2="184" class="la" marker-end="url(#a1r)"/>
+<text x="330" y="214" text-anchor="middle" class="ts">③ TCP connect .11:30501 (quem abre é a vítima)</text>
+<line x1="570" y1="222" x2="94" y2="222" class="ln" marker-end="url(#a1k)"/>
+<text x="330" y="252" text-anchor="middle" class="ts">④ NOTIFICATION 0x1001 em inundação, pela conexão</text>
+<line x1="90" y1="260" x2="566" y2="260" class="la" marker-end="url(#a1r)"/>
+<line x1="90" y1="270" x2="566" y2="270" class="la" marker-end="url(#a1r)"/>
+<text x="690" y="296" text-anchor="middle" class="ts">a VDE real continua publicando</text>
+<line x1="810" y1="304" x2="574" y2="304" class="ln" marker-end="url(#a1k)"/>
+<text x="450" y="348" text-anchor="middle" class="ts tm">duas ofertas do mesmo serviço disputam: cada vítima derruba e reabre a conexão cerca de 9.800 vezes</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> é o que qualquer aplicação vsomeip faz ao oferecer um serviço. Sem autenticação no SD, as vítimas aceitam a oferta do .11 como se fosse da VDE, e são elas que abrem a conexão. O atacante não entra em conexão alheia.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>Fuzzy <span class="tag atk">atacante .17 · 3.332 quadros · 100% UDP, só SD</span></h3>
+<svg viewBox="0 0 900 220" role="img" aria-label="Fuzzy: o .17 anuncia no SD centenas de serviços aleatórios; ninguém assina e não há notificações.">
+<defs>
+<marker id="a2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a2s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mksd"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .17</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">todos os nós</text>
+<line x1="90" y1="48" x2="90" y2="180" class="lane"/><line x1="330" y1="48" x2="330" y2="180" class="lane"/><line x1="570" y1="48" x2="570" y2="180" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService serviço aleatório (0x20xx)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a2r)"/>
+<line x1="90" y1="94" x2="326" y2="94" class="la" marker-end="url(#a2r)"/>
+<line x1="90" y1="106" x2="326" y2="106" class="la" marker-end="url(#a2r)"/>
+<text x="450" y="126" text-anchor="middle" class="ts tsd">chega a todos</text>
+<line x1="330" y1="134" x2="566" y2="134" class="lsd" marker-end="url(#a2s)"/>
+<text x="700" y="160" text-anchor="middle" class="ts tm">ninguém assina: nenhum nó usa esses serviços</text>
+<text x="450" y="208" text-anchor="middle" class="ts tm">cerca de 400 serviços diferentes, cada um com endpoint próprio; nenhuma notificação, nenhum TCP</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> anunciar um serviço é operação normal do SD. Ofertas de serviços que ninguém procura são ignoradas pelas pilhas, mas passam pelo fio.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>MITM single <span class="tag atk">atacante .13 · 270.665 quadros · UDP 80% (todo SD) · TCP 20%</span></h3>
+<svg viewBox="0 0 900 400" role="img" aria-label="MITM single: o .13 anuncia 0x1001 se passando pela VDE; a ADAS assina e conecta no .13 e passa a receber dele; CLU, PT e TEL continuam na VDE.">
+<defs>
+<marker id="a3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a3k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb ta">atacante .13</text>
+<text x="330" y="24" text-anchor="middle" class="tb tsd">SD multicast</text><text x="330" y="40" text-anchor="middle" class="ts tm">:30490</text>
+<text x="570" y="24" text-anchor="middle" class="tb">ADAS .2</text><text x="570" y="40" text-anchor="middle" class="ts tm">a vítima sequestrada</text>
+<text x="810" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="810" y="40" text-anchor="middle" class="ts tm">dona legítima de 0x1001</text>
+<line x1="90" y1="48" x2="90" y2="350" class="lane"/><line x1="330" y1="48" x2="330" y2="350" class="lane"/><line x1="570" y1="48" x2="570" y2="350" class="lane"/><line x1="810" y1="48" x2="810" y2="350" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① OfferService 0x1001 (endpoint do .13)</text>
+<line x1="90" y1="82" x2="326" y2="82" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="114" text-anchor="middle" class="ts">② SubscribeEventgroup 0x1001</text>
+<line x1="570" y1="122" x2="94" y2="122" class="ln" marker-end="url(#a3k)"/>
+<text x="330" y="144" text-anchor="middle" class="ts">SubscribeEventgroupAck</text>
+<line x1="90" y1="152" x2="566" y2="152" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="184" text-anchor="middle" class="ts">③ TCP connect .13:30501 (quem abre é a ADAS)</text>
+<line x1="570" y1="192" x2="94" y2="192" class="ln" marker-end="url(#a3k)"/>
+<text x="330" y="224" text-anchor="middle" class="ts">④ NOTIFICATION 0x1001: a ADAS recebe do atacante</text>
+<line x1="90" y1="232" x2="566" y2="232" class="la" marker-end="url(#a3r)"/>
+<text x="330" y="264" text-anchor="middle" class="ts">⑤ OfferService 0x1001 com o endpoint da VDE, direto à ADAS</text>
+<line x1="90" y1="272" x2="566" y2="272" class="la" marker-end="url(#a3r)"/>
+<text x="810" y="310" text-anchor="middle" class="ts tm">CLU, PT e TEL</text>
+<text x="810" y="326" text-anchor="middle" class="ts tm">seguem na VDE real</text>
+<text x="450" y="388" text-anchor="middle" class="ts tm">o .13 não assina a VDE: ele se passa por ela, e só a ADAS cai</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> oferecer um serviço que já existe e responder a assinaturas são chamadas comuns do vsomeip. A ADAS não tem como distinguir a oferta falsa da verdadeira sem SecOC.</div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>MITM multi <span class="tag atk">atacantes .14 e .15 · 267.049 quadros · 98% TCP</span></h3>
+<svg viewBox="0 0 900 450" role="img" aria-label="MITM multi: o .14 assina a VDE, repassa os eventos pelo serviço 0x100B ao .15, e o .15 se passa pela VDE para a ADAS.">
+<defs>
+<marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
+<marker id="a4k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+</defs>
+<text x="90" y="24" text-anchor="middle" class="tb">VDE .10</text><text x="90" y="40" text-anchor="middle" class="ts tm">fonte real</text>
+<text x="330" y="24" text-anchor="middle" class="tb ta">atacante .14</text><text x="330" y="40" text-anchor="middle" class="ts tm">elo 1: escuta</text>
+<text x="570" y="24" text-anchor="middle" class="tb ta">atacante .15</text><text x="570" y="40" text-anchor="middle" class="ts tm">elo 2: se passa pela VDE</text>
+<text x="810" y="24" text-anchor="middle" class="tb">ADAS .2</text><text x="810" y="40" text-anchor="middle" class="ts tm">vítima</text>
+<line x1="90" y1="48" x2="90" y2="400" class="lane"/><line x1="330" y1="48" x2="330" y2="400" class="lane"/><line x1="570" y1="48" x2="570" y2="400" class="lane"/><line x1="810" y1="48" x2="810" y2="400" class="lane"/>
+<text x="210" y="74" text-anchor="middle" class="ts">① assina 0x1001 + TCP connect :30501</text>
+<line x1="330" y1="82" x2="94" y2="82" class="la" marker-end="url(#a4r)"/>
+<text x="210" y="112" text-anchor="middle" class="ts">② NOTIFICATION 0x1001 real</text>
+<line x1="90" y1="120" x2="326" y2="120" class="ln" marker-end="url(#a4k)"/>
+<text x="330" y="156" text-anchor="middle" class="ts tsd">③ anuncia 0x100B (relay) no SD</text>
+<text x="450" y="192" text-anchor="middle" class="ts">④ assina 0x100B + TCP connect :30601</text>
+<line x1="570" y1="200" x2="334" y2="200" class="la" marker-end="url(#a4r)"/>
+<text x="450" y="230" text-anchor="middle" class="ts">⑤ NOTIFICATION 0x100B: o evento da VDE repassado</text>
+<line x1="330" y1="238" x2="566" y2="238" class="la" marker-end="url(#a4r)"/>
+<text x="570" y="274" text-anchor="middle" class="ts tsd">⑥ anuncia 0x1001 no SD, como se fosse a VDE</text>
+<text x="690" y="310" text-anchor="middle" class="ts">⑦ ADAS assina + TCP connect .15:30501</text>
+<line x1="810" y1="318" x2="574" y2="318" class="ln" marker-end="url(#a4k)"/>
+<text x="690" y="348" text-anchor="middle" class="ts">⑧ NOTIFICATION 0x1001</text>
+<line x1="570" y1="356" x2="806" y2="356" class="la" marker-end="url(#a4r)"/>
+<text x="450" y="438" text-anchor="middle" class="ts tm">cadeia completa: VDE → .14 → (0x100B) → .15 → ADAS. São dois atacantes, não três.</text>
+</svg>
+<div class="why"><b>Possível na realidade:</b> cada passo é uma operação comum do SOME/IP: assinar como cliente, oferecer serviço, repassar evento. A cadeia toda roda numa pilha padrão, e é por isso que o dataset tem 98% de TCP: as conexões são abertas pelos próprios nós.</div>
+</div>
