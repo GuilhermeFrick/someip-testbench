@@ -11,6 +11,7 @@ ataques como injeção genérica. Três fatos mudaram a ordem:
 
 ## Decisões travadas
 
+- **vsomeip 3.5.6** (desde 02/11): a versão que reproduz o dataset, e a mais recente na data da captura.
 - **O ataque acontece no barramento vivo.** Cada atacante é uma ECU com IP próprio, rodando vsomeip,
   e só faz o que uma ECU comprometida faria seguindo o SOME/IP. Nada que a pilha real não permita.
 - **Os atacantes reproduzem o que o dataset contém**, medido no PCAP: mecanismo, IPs, transporte.
@@ -91,6 +92,16 @@ que também é real e pode ser um cenário à parte.
 **Critério de aceite, por ataque:** `tools/attack_flows.py` sobre a captura da bancada produz a mesma
 assinatura que sobre o PCAP do dataset: mesmos tipos de entrada SD, mesmo lado abrindo o TCP, mesmas
 vítimas, proporção UDP/TCP a até 10 pontos percentuais.
+
+**Resultado de A1 e A2 (02/11, `platform/scenario-live`): passaram.** DoS com 58,9%/41,1% de UDP/TCP
+contra 59,5%/40,5% do dataset, ADAS aceita e inundada, CLU/PT/TEL recusadas e reconectando, sem SYN
+para a VDE. Fuzzy com os mesmos 200 serviços, mesma faixa e mesmas instâncias, 3,8 contra 3,5
+quadros/s. Dois achados no caminho: o injetor do DoS declara **só** o evento que publica (é isso que
+faz o dataset recusar CLU, PT e TEL), e a versão do vsomeip que reproduz o dataset é a **3.5.6**, que
+passou a ser a padrão da bancada (a 3.6.4 recusa até a ADAS; e no benigno a 3.5.6 dá 99,1% de TCP,
+igual ao dataset). Revalidados na 3.5.6: `sd-smoke`, `bus-kim` e a suíte inteira.
+
+**A3–A4 (MITM single e multi):** falta o emissor de SD bruto para o `StopOffer` em nome da VDE.
 
 ## Fase B — Rodada única
 

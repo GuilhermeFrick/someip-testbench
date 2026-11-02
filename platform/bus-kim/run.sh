@@ -39,7 +39,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT" || exit 1
 
-IMG="${IMG:-someip-base:3.6.4}"
+IMG="${IMG:-someip-base:3.5.6}"
 NET="${NET:-someip-kim}"
 MATRIZ="${MATRIZ:-platform/comm_matrix_kim.yaml}"
 DUR="${DUR:-60}"
@@ -199,7 +199,14 @@ echo "  (com mc=0 o Service Discovery nunca sobe e nada abaixo funciona)"
 FALTA_MC=0
 for NO in $NOS; do
     L="$(grep -oE 'mc=[01]' "$OUT/log-$NO.txt" | tail -1)"
-    [ "$L" = "mc=1" ] || { FALTA_MC=$((FALTA_MC + 1)); printf '  %-10s %s\n' "$NO" "${L:-sem linha de netlink}"; }
+    # Só o mc=0 é falha. A 3.5.6 não escreve a linha de netlink; nela, o SD subir se
+    # vê pelos recebidos, mais abaixo.
+    if [ "$L" = "mc=0" ]; then
+        FALTA_MC=$((FALTA_MC + 1))
+        printf '  %-10s %s\n' "$NO" "$L"
+    elif [ -z "$L" ]; then
+        printf '  %-10s sem linha de netlink (a versão não registra; ver recebidos)\n' "$NO"
+    fi
 done
 if [ "$FALTA_MC" -eq 0 ]; then
     echo "  todos os nós viram a rota"

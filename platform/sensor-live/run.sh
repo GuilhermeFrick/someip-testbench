@@ -21,7 +21,7 @@ set -u
 
 NET=someip-bus
 SUBNET=172.30.0.0/24
-IMG="${IMG:-someip-base:3.6.4}"
+IMG="${IMG:-someip-base:3.5.6}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 OUT="${OUT:-$HERE/out}"

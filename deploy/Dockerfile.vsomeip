@@ -5,18 +5,22 @@
 # da bancada nao cresca a cada no.
 #
 # BASE é parâmetro por causa das versões antigas do vsomeip: a série 3.1 não
-# compila com o Boost do Ubuntu 24.04. A bancada padrão continua sendo 24.04 +
-# 3.6.4; as outras combinações existem para o degrau platform/dup-offer, que
-# procura a versão cujo comportamento reproduz o dataset do Kim (capturado em
-# 2025-08-08, com versão do vsomeip não informada).
+# compila com o Boost do Ubuntu 24.04. A bancada padrão é 24.04 + 3.5.6 (ver
+# VSOMEIP_REF abaixo); as outras combinações existem para comparar versões, como
+# em platform/dup-offer e platform/scenario-live.
 ARG BASE=ubuntu:24.04
 FROM ${BASE}
 
 ARG DEBIAN_FRONTEND=noninteractive
-# Tag FIXA, nao master: a bancada precisa ser reproduzivel, e esta e a versao
-# em que o Service Discovery foi verificado funcionando (ver platform/sd-smoke).
-# Subir de versao exige repetir aquele teste.
-ARG VSOMEIP_REF=3.6.4
+# Tag FIXA, nao master: a bancada precisa ser reproduzivel.
+#
+# 3.5.6, e nao a 3.6.4 usada ate 2026-11-02, porque e a versao que REPRODUZ o
+# dataset do Kim: 99,1% de TCP no barramento benigno (a 3.6.4 dava 98%) e, no
+# DoS, 58,9%/41,1% de UDP/TCP contra 59,5%/40,5% do dataset. A 3.6.4 recusa a
+# assinatura que o atacante do dataset aceita (platform/scenario-live). E e a
+# mais recente que existia quando o dataset foi capturado (2025-08-08).
+# Trocar de versao exige repetir platform/sd-smoke e platform/bus-kim.
+ARG VSOMEIP_REF=3.5.6
 
 # Dois grupos nao sao do vsomeip, e estao aqui para que UMA invocacao do
 # tests/run_all.sh dentro desta imagem rode a suite INTEIRA. Antes nao havia

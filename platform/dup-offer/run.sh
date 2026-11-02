@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT" || exit 1
 
-IMG="${IMG:-someip-base:3.6.4}"
+IMG="${IMG:-someip-base:3.5.6}"
 NET="${NET:-someip-dup}"
 SUBNET="${SUBNET:-172.28.0.0/24}"
 DUR="${DUR:-60}"

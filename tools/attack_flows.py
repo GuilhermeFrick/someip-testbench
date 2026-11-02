@@ -110,8 +110,16 @@ def sd_entradas(pl):
         typ, i1 = ent[k], ent[k + 1]
         nops = ent[k + 3] >> 4
         svc = struct.unpack(">H", ent[k + 4:k + 6])[0]
+        ttl = int.from_bytes(ent[k + 9:k + 12], "big")
         eps = ", ".join(opcoes[i1:i1 + nops]) if nops else "-"
-        yield SD_ENTRADAS.get(typ, "tipo0x%02x" % typ), svc, eps
+        nome = SD_ENTRADAS.get(typ, "tipo0x%02x" % typ)
+        # TTL zero inverte o sentido da entrada: Offer vira StopOffer, Subscribe vira
+        # StopSubscribe e Ack vira Nack (recusa). Sem separar, uma rodada cheia de
+        # assinaturas RECUSADAS parece cheia de assinaturas aceitas.
+        if ttl == 0:
+            nome = {"OfferService": "StopOfferService", "SubscribeEventgroup": "StopSubscribeEventgroup",
+                    "SubscribeEventgroupAck": "SubscribeEventgroupNack"}.get(nome, nome)
+        yield nome, svc, eps
 
 
 def imprime(titulo, cont, n=15):

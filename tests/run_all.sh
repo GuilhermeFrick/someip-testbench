@@ -11,7 +11,7 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
-IMG="${IMG:-someip-base:3.6.4}"
+IMG="${IMG:-someip-base:3.5.6}"
 SAN="-fsanitize=address,undefined"
 FLAGS="-std=c++14 -I. -Wall -Wextra -Wpedantic -g"
 OBJ="$(mktemp -d)"
