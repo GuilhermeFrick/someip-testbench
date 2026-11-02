@@ -48,7 +48,7 @@ A gramática, em resumo (ver `docs/VCDL.md` para o detalhe):
     [ ...atributos globais... ] binding SOMEIP;   // SD + serialização
 
     namespace DataTypes {
-        [fixlayout=true] struct Payload24 { array<uint8, 24> data; }
+        struct Payload24 { array<uint8, 24> data; }
         interface Service1001 { event Payload24 Event0001; }
     }
 
@@ -86,7 +86,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gen_config  # noqa: E402  (reusa endpoints_de, transporte_de e consumos_de)
 import matrix_table  # noqa: E402
 
-VERSAO_VCDL = "2.0"
+VERSAO_VCDL = "1.4"
 
 
 def mac_de(ip: str) -> str:
@@ -146,9 +146,9 @@ def bloco_tipos(matrix: dict) -> list:
 
     Um struct por TAMANHO distinto de payload, nao por evento: o barramento de
     referencia tem onze eventos e apenas quatro tamanhos, e repetir a mesma
-    definicao quatro vezes nao acrescenta nada. `fixlayout=true` e o que faz o
-    struct ter layout binario fixo, sem campo de comprimento na frente -- que e o
-    que o payload cru do barramento e.
+    definicao quatro vezes nao acrescenta nada. O layout binario fixo, sem campo de
+    comprimento na frente -- que e o que o payload cru do barramento e -- vem de
+    `structLengthFieldSize=0` nos atributos globais.
     """
     tamanhos = set()
     for svc in matrix["services"].values():
@@ -156,10 +156,18 @@ def bloco_tipos(matrix: dict) -> list:
             tamanhos.add(int(ev.get("payload_bytes") or 8))
 
     L = ["namespace DataTypes", "{"]
-    L.append("    // Um struct por tamanho de payload. fixlayout=true: layout binario fixo,")
-    L.append("    // sem campo de comprimento -- e o que o payload cru do barramento e.")
+    # Um struct por tamanho de payload.
+    #
+    # O exemplo do manual escreve `[fixlayout=true]` antes do struct, para o layout
+    # binario ser fixo e sem campo de comprimento -- que e o que o payload cru do
+    # barramento e. Mas o CANoe recusa esse atributo aqui:
+    #     [VL1013] Attribute refers to neither an attribute definition nor an
+    #              attribute bundle
+    # e era o UNICO erro que sobrava depois de corrigir a versao. Ele sai, e o mesmo
+    # efeito vem de `structLengthFieldSize=0` nos atributos globais, que ja esta la.
+    # ⚠️ A equivalencia e raciocinio, nao medicao: ninguem comparou os bytes no fio
+    # com e sem o atributo.
     for t in sorted(tamanhos):
-        L.append("    [fixlayout=true]")
         L.append("    struct %s { array<uint8, %d> data; }" % (nome_payload(t), t))
     L.append("")
 
@@ -308,18 +316,28 @@ def main() -> None:
     linhas.append(" * Mesma matriz que sobe os nos em vsomeip, no formato do Vector CANoe.")
     linhas.append(" * Um barramento, duas implementacoes.")
     linhas.append(" *")
-    linhas.append(" * ⚠️ AINDA NAO CARREGADO NUM CANoe REAL. A gramatica foi lida do manual da")
-    linhas.append(" * Vector (docs/referencias/), nao adivinhada, mas a saida nao foi validada.")
-    linhas.append(" * O atributo de endpoint TCP em particular e inferencia. Ver docs/VCDL.md. */")
-    # O preambulo. A ajuda do CANoe da a sintaxe exata:
-    #     import-stmt: import module? string-literal ;
-    # e diz que "Both vCDL files and modules, a.k.a. bindings, can be imported".
-    # Sem ele, `ipstack`, `ipnep`, `ipaep`, `provider`, `consumer` e `participant`
-    # nao resolvem -- foi o que o parser do CANoe acusou.
-    # ⚠️ O NOME DO MODULO ainda nao foi confirmado: "SOMEIP" e a aposta obvia,
-    # porque e o nome que a propria linguagem usa em `binding SOMEIP`.
-    linhas.append('import module "SOMEIP";')
+    linhas.append(" * VALIDADO contra o parser do CANoe 20 (SP2): com `version 1.4` e")
+    linhas.append(" * `import module \"SOMEIP\"` o arquivo carrega. O modulo e o atributo")
+    linhas.append(" * `tcpEndpoint` foram confirmados por experimento de controle, com nome")
+    linhas.append(" * inventado para provar que o parser de fato verifica. Ver docs/VCDL.md. */")
+    # O preambulo, e A ORDEM IMPORTA: `version` tem de ser a primeira linha. Com o
+    # import antes dela o CANoe responde "The vCDL file version could not be found".
+    #
+    # E a versao e 1.4, nao 2.0. Isto nao e escolha: a pagina de ajuda "SOME/IP
+    # Binding" da Vector fica sob "vCDL >> vCDL 1.4 (deprecated) >> Language", ou
+    # seja, toda a sintaxe de binding SOME/IP que o manual documenta -- `ipstack`,
+    # `ipnep`, `ipaep`, `provider`, `consumer`, `participant`, `binding SOMEIP;` e
+    # os atributos em minuscula -- e 1.4. Declarando `version 2.0` o parser recusa
+    # tudo isso de uma vez, e ainda avisa por que:
+    #     [IMP1001] Remember all predefined attributes in vCDL 2.0 start with an
+    #               uppercase letter
+    # O caminho para 2.0 existe (o exemplo ADAS usa `import module "ADAS";` com
+    # `[Binding="ADAS"]` e nomes qualificados `_ADAS::...`), mas e outra traducao.
     linhas.append("version %s;" % VERSAO_VCDL)
+    # Modulo CONFIRMADO por experimento de controle: um nome inventado produz
+    # `[COE0119] No module with this name can be found and thus no binding will be
+    # activated`, que nunca aparece com "SOMEIP".
+    linhas.append('import module "SOMEIP";')
     linhas.append("")
     linhas += bloco_global(matrix["network"])
     linhas += bloco_tipos(matrix)

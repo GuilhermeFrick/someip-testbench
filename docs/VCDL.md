@@ -135,102 +135,79 @@ python3 tools/emit_vcdl.py --matrix platform/comm_matrix_kim.yaml --out build/cf
 
 A matriz recuperada de 9 nós dá 353 linhas; a da bancada, 126.
 
-## 🔴 O que o CANoe respondeu quando a saída foi carregada de verdade
+## ✅ VALIDADO contra o parser do CANoe 20 (SP2)
 
-A validação foi feita: um vCDL de prova com todos os construtos que o emissor usa
-foi digitado dentro da sessão do CANoe 20 (SP2) e carregado. **Ele recusou**, e as
-mensagens valem mais do que um "passou" valeria.
+A saída do emissor foi carregada num CANoe real e o parser a aceita. O caminho até
+lá rendeu três correções, e a primeira é a que explica as outras duas.
 
-**1. `binding SOMEIP;` não é elemento de topo.** O parser listou exatamente o que
-aceita nessa posição, e `binding` não está na lista:
+### 🔴 A sintaxe do manual é vCDL **1.4**, não 2.0
 
-> `(L3,C1) [VL0001] Parser error, expected one of the following elements:`
-> `attributes, attribute bundle, attribute definition, bit fields, "const",`
-> `"object", "map", "list", "array", "nullable", reference to object,`
-> `[OP_ELLIPSIS], "encoding", "enum", "interface", "abstract", "namespace",`
-> `refinement, struct data type, "sysvar", "typedef", union data type,`
-> `"virtualnetwork", "reference", "reverse"`
+Este foi o erro de origem. A página de ajuda **"SOME/IP Binding"** da Vector fica
+sob **`CANoe » vCDL » vCDL 1.4 (deprecated) » Language`**. Ou seja: tudo o que o
+manual Part 2 documenta — `ipstack`, `ipnep`, `ipaep`, `provider`, `consumer`,
+`participant`, `binding SOMEIP;` e os atributos em minúscula — é **1.4**.
 
-**2. Os construtos de rede não são palavras-chave, são ARTEFATOS a importar:**
+Declarando `version 2.0;` o parser recusa tudo isso de uma vez, com cerca de 40
+erros `[VL1001] Artifact or subelement ... not found`. E ele diz o porquê:
 
-> `(L15,C1) [VL1001] Artifact or subelement 'ipstack' not found`
-> `(L17,C1) [VL1001] Artifact or subelement 'ipnep' not found`
-> `(L21,C1) [VL1001] Artifact or subelement 'ipaep' not found`
-> `(L39,C1) [VL1001] Artifact or subelement 'provider' not found`
-> `(L41,C1) [VL1001] Artifact or subelement 'consumer' not found`
-> `(L46,C1) [VL1001] Artifact or subelement 'participant' not found`
+> `(L1,C1) [IMP1001] Remember all predefined attributes in vCDL 2.0 start with an uppercase letter`
 
-**3. E existe o mecanismo que falta**, dito pelo próprio parser:
+Com **`version 1.4;`** todos esses erros desaparecem.
 
-> `(L42,C1) [VL0001] Parser error, expected one of the following elements:`
-> `import statement, "using", top-level object, [<eof>]`
+O caminho para o 2.0 existe e está anotado para depois: o exemplo `ADASSystem_Setup.vcdl`
+usa `import module "ADAS";` com `[Binding="ADAS"]` e nomes qualificados
+`_ADAS::DataModel::ISensor`. É outra tradução, não um ajuste.
 
-**4. O tipo de um evento tem restrição:**
+### A ordem das duas primeiras linhas importa
 
-> `(L10,C7) [VL1014] Expecting one of the following object types: IDOType`
+`version` tem de ser a **primeira** linha. Com o `import` antes dela:
 
-### A explicação, e ela estava escondida à vista
+> `KimBus.vCDL: The vCDL file version could not be found`
 
-O exemplo do manual da Vector (Part 2, slide 9) mostra um trecho que **começa na
-linha 115**. As primeiras 114 linhas — com os `import` / `using` que trazem
-`ipstack`, `ipnep`, `ipaep`, `provider`, `consumer` e `participant` — estão fora
-do recorte. O emissor reproduziu fielmente o que estava visível e, por isso,
-produz um arquivo sem preâmbulo.
+### O módulo chama-se `SOMEIP` — confirmado por controle
 
-**O que falta é pequeno e identificado:** o preâmbulo de importação, a posição
-correta do `binding SOMEIP`, e o tipo admissível de evento. Nenhuma dessas é uma
-dúvida de arquitetura — o mapeamento campo a campo acima continua valendo, e foi
-confirmado pelo próprio parser ao reclamar de *posição* e de *artefato ausente*,
-nunca do significado dos identificadores.
+Não por dedução: trocando por um nome inventado, o parser avisa
 
-### 🟢 O MECANISMO FOI ENCONTRADO
+> `(L2,C15) [COE0119] No module with this name can be found and thus no binding will be activated.`
 
-A ajuda do CANoe (`vCDL 2.0 → Basic Concepts`) dá a sintaxe exata:
+e esse aviso **nunca** aparece com `"SOMEIP"`.
 
-```
-import-stmt:  import module? string-literal ;
-```
+### `tcpEndpoint` é válido — também por controle
 
-E diz o que isso significa:
+Com `tcpEndpoint`, nenhum erro. Com `xyzEndpoint` inventado, as duas linhas são
+rejeitadas:
 
-> *"Both vCDL files and modules, **a.k.a. bindings**, can be imported."*
-> *"Paths to imported files are always relative to the vCDL file that contains the import statement."*
+> `(L39,C21) [VL1013] Attribute refers to neither an attribute definition nor an attribute bundle`
 
-São duas formas — `import "OutroArquivo.vcdl";` e **`import module "MQTT";`**. A
-segunda é a que traz um *binding*, e é a que falta no nosso arquivo. O emissor
-passou a escrever:
+É isso que prova que o parser de fato confere o nome do atributo — sem o controle,
+"nenhum erro" não significaria nada.
 
-```
-import module "SOMEIP";
-```
+### O único resíduo: `[fixlayout=true]`
 
-⚠️ **O nome do módulo ainda não foi confirmado.** `"SOMEIP"` é a aposta óbvia,
-porque é o nome que a própria linguagem usa em `binding SOMEIP`. Confirmar é um
-teste de um minuto para quem tiver uma sessão aberta: adicionar a linha, recarregar
-e ver se `ipstack` passa a resolver.
+Depois das correções sobrou um erro só, no atributo que o manual mostra antes do
+struct:
 
-### O que foi descartado nesta busca, para não repetir
+> `(L7,C2) [VL1013] Attribute refers to neither an attribute definition nor an attribute bundle`
 
-* **A barra do Communication Setup não exporta vCDL.** Os ícones são *Add
-  Application Model*, *Load VTT Manifest* e *Validate*.
-* **O Help não indexa `ipstack` no sentido do vCDL** — 15 resultados, todos de
-  objetos COM.
-* **O exemplo `SOMEIP Basic Franca` usa Franca, não vCDL** — a descrição dele diz
-  *"Shows a simple simulation with Franca as database format"*.
-* **O link do exemplo no manual está morto**
-  (`portal.vector.com/shared/068f1303-…` devolve 404 **mesmo autenticado**).
-* A seção vCDL 2.0 da ajuda online encadeia os tópicos por *next/previous*; o
-  caminho é `vCDLStartpage → vCDLComparison → vCDLConcept → Language/vCDLAttributes
-  → …` e ainda há páginas não lidas depois de `vCDLAttributes`.
+O emissor **deixou de emiti-lo**. O mesmo efeito — layout binário fixo, sem campo
+de comprimento — vem de `structLengthFieldSize=0`, que já está nos atributos
+globais. ⚠️ Essa equivalência é raciocínio, não medição: ninguém comparou os bytes
+no fio com e sem o atributo.
 
-### Como obter o preâmbulo
+### Notas de operação da sessão de demonstração
 
-A sessão de demonstração tem outros exemplos que **usam vCDL** em vez de ARXML —
-`SOMEIP Basic Franca` e `Basic AUTOSAR SOME/IP Event`. Abrir o `.vcdl` de um deles
-e ler as primeiras linhas resolve. É o próximo passo, e é barato.
+* O diálogo **Load Data Source** só valida de verdade **depois do `Finish`** — a
+  primeira tela quase não mostra nada;
+* ele às vezes abre **invisível**; `Alt+Space` o traz à frente, `Esc` fecha;
+* atalhos de `Ctrl` **não chegam** à sessão: `Ctrl+X` digita um "x".
 
 ## O passo que falta
 
-Carregar num CANoe real e corrigir o que ele recusar. O CANoe valida com código e
-posição (`KimBus.vCDL (L7,C9): [VL0001] Parser...`), então o ciclo é rápido para
-quem tiver licença — e cada erro corrigido vale para as duas matrizes de uma vez.
+O arquivo carrega. O que **não** foi feito é **rodar** a simulação a partir dele e
+comparar o PCAP com o da nossa bancada — a sessão de demonstração não deixa arquivo
+sair, então a comparação cruzada continua esperando uma licença.
+
+E há uma dívida anotada: migrar para **vCDL 2.0**, que renomeia os atributos para
+maiúscula inicial e usa `[Binding="SOMEIP"]` em vez de `binding SOMEIP;`. Não é
+urgente — o 1.4 é o que o próprio manual da Vector documenta para SOME/IP — mas
+está marcado como *deprecated* na ajuda.
