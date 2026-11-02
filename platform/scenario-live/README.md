@@ -166,10 +166,34 @@ RESULTADOS.md`: 9,42% → 0,36%). Com `counter`, **94% dos eventos falsos são d
 MITM single** (9 021 de 9 623). Com os bytes do dataset sobram ~400, entre eles ~30 por consumidora
 como MITM multi (provável resíduo de Service Discovery).
 
-**Hipótese em teste:** no dataset a VDE quase não muda de valor (99,6% das notificações repetem a
+**Teste do conteúdo da VDE (02/11).** Barramento só benigno, 60 s, sensor ao vivo; nas três últimas
+linhas só o fluxo 0x1001/0x0001 da VDE muda, o resto é o banco do dataset:
+
+| conteúdo | falso positivo | quem dispara |
+|---|---:|---|
+| `constant` em todas as ECUs | 0,20% | resíduo de SD (~30 por ECU como MITM multi) |
+| `dataset` (bytes do Kim) | 0,39% | resíduo de SD |
+| `counter` em todas as ECUs | 9,43% | VDE como MITM single (9 021) |
+| `random` em todas as ECUs | 44,5% | quase tudo `MalformedPayload` (Fuzzy) |
+| VDE com o sinal do atacante do MITM single do dataset | 8,25% | VDE como MITM single (4 593) e Malformed (3 546) |
+| **VDE com um perfil sintético de carro andando, nunca visto** | **13,8%** | **VDE como `MalformedPayload` (13 830)** |
+
+O perfil sintético (`build/cfg/payloads-vde-sintetico.bin`): parado 5 s, acelera a 1 m/s² até
+15 m/s, cruzeiro com variação de ±0,3 m/s, freia, para; velocidade média 9,8 m/s; 73% das
+notificações repetem a anterior.
+
+**Leitura.** O falso positivo não vem de "o valor mudar", e sim de **conteúdo novo**: qualquer
+sequência de bytes que a VDE não tinha no treino é classificada como ataque, e um sinal novo e
+fisicamente plausível sai como Fuzzy. O detector se comporta como um detector de novidade de bytes
+preso à distribuição do barramento do Kim, em que o carro está quase sempre parado. **Consequência:
+conteúdo de condução realista (CARLA) vai aumentar o falso positivo, não diminuir, a menos que o
+detector aprenda o tráfego benigno do novo domínio.** A bancada já gera esse tráfego, benigno e com os
+quatro ataques, rotulado pelo MAC.
+
+*Registro da hipótese original:* no dataset a VDE quase não muda de valor (99,6% das notificações repetem a
 anterior; o carro está parado), e o único sinal de velocidade que muda o tempo todo é o do atacante
 do MITM single. Se o detector aprendeu "0x1001 com valor mudando = MITM single", um veículo em
 movimento (CARLA) vai parecer ataque. O teste: rodadas com a VDE `constant`, `random` e com um sinal de
 velocidade plausível em movimento (`build/cfg/payloads-vde-andando.bin`: o banco do dataset com o
-fluxo 0x1001/0x0001 trocado pelo sinal que o atacante do dataset publicou). Interrompido: o `runner`
-saiu da rede durante a rodada.
+fluxo 0x1001/0x0001 trocado pelo sinal que o atacante do dataset publicou). O `runner` saiu da rede na
+primeira tentativa; as rodadas foram refeitas desacopladas (`nohup`).
