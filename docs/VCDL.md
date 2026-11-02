@@ -135,6 +135,60 @@ python3 tools/emit_vcdl.py --matrix platform/comm_matrix_kim.yaml --out build/cf
 
 A matriz recuperada de 9 nós dá 353 linhas; a da bancada, 126.
 
+## 🔴 O que o CANoe respondeu quando a saída foi carregada de verdade
+
+A validação foi feita: um vCDL de prova com todos os construtos que o emissor usa
+foi digitado dentro da sessão do CANoe 20 (SP2) e carregado. **Ele recusou**, e as
+mensagens valem mais do que um "passou" valeria.
+
+**1. `binding SOMEIP;` não é elemento de topo.** O parser listou exatamente o que
+aceita nessa posição, e `binding` não está na lista:
+
+> `(L3,C1) [VL0001] Parser error, expected one of the following elements:`
+> `attributes, attribute bundle, attribute definition, bit fields, "const",`
+> `"object", "map", "list", "array", "nullable", reference to object,`
+> `[OP_ELLIPSIS], "encoding", "enum", "interface", "abstract", "namespace",`
+> `refinement, struct data type, "sysvar", "typedef", union data type,`
+> `"virtualnetwork", "reference", "reverse"`
+
+**2. Os construtos de rede não são palavras-chave, são ARTEFATOS a importar:**
+
+> `(L15,C1) [VL1001] Artifact or subelement 'ipstack' not found`
+> `(L17,C1) [VL1001] Artifact or subelement 'ipnep' not found`
+> `(L21,C1) [VL1001] Artifact or subelement 'ipaep' not found`
+> `(L39,C1) [VL1001] Artifact or subelement 'provider' not found`
+> `(L41,C1) [VL1001] Artifact or subelement 'consumer' not found`
+> `(L46,C1) [VL1001] Artifact or subelement 'participant' not found`
+
+**3. E existe o mecanismo que falta**, dito pelo próprio parser:
+
+> `(L42,C1) [VL0001] Parser error, expected one of the following elements:`
+> `import statement, "using", top-level object, [<eof>]`
+
+**4. O tipo de um evento tem restrição:**
+
+> `(L10,C7) [VL1014] Expecting one of the following object types: IDOType`
+
+### A explicação, e ela estava escondida à vista
+
+O exemplo do manual da Vector (Part 2, slide 9) mostra um trecho que **começa na
+linha 115**. As primeiras 114 linhas — com os `import` / `using` que trazem
+`ipstack`, `ipnep`, `ipaep`, `provider`, `consumer` e `participant` — estão fora
+do recorte. O emissor reproduziu fielmente o que estava visível e, por isso,
+produz um arquivo sem preâmbulo.
+
+**O que falta é pequeno e identificado:** o preâmbulo de importação, a posição
+correta do `binding SOMEIP`, e o tipo admissível de evento. Nenhuma dessas é uma
+dúvida de arquitetura — o mapeamento campo a campo acima continua valendo, e foi
+confirmado pelo próprio parser ao reclamar de *posição* e de *artefato ausente*,
+nunca do significado dos identificadores.
+
+### Como obter o preâmbulo
+
+A sessão de demonstração tem outros exemplos que **usam vCDL** em vez de ARXML —
+`SOMEIP Basic Franca` e `Basic AUTOSAR SOME/IP Event`. Abrir o `.vcdl` de um deles
+e ler as primeiras linhas resolve. É o próximo passo, e é barato.
+
 ## O passo que falta
 
 Carregar num CANoe real e corrigir o que ele recusar. O CANoe valida com código e

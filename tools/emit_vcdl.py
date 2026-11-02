@@ -13,6 +13,28 @@ E isso abre a validação mais forte que a bancada pode ter: montar a mesma matr
 nos dois, exportar PCAP de cada um e comparar. Hoje não dá (a demo online não
 deixa arquivo sair), mas o caminho fica pronto.
 
+🔴 **A SAÍDA FOI CARREGADA NUM CANoe REAL E FOI RECUSADA.** Um vCDL de prova com
+todos os construtos abaixo foi digitado dentro de uma sessão do CANoe 20 (SP2) e
+submetido ao parser. O que ele disse, e isto vale mais do que um "passou":
+
+* `binding SOMEIP;` **não é elemento de topo** — o parser listou os que aceita, e
+  `binding` não está na lista;
+* `ipstack`, `ipnep`, `ipaep`, `provider`, `consumer` e `participant` **não são
+  palavras-chave**: são *artefatos* que precisam ser importados
+  (`[VL1001] Artifact or subelement 'ipstack' not found`);
+* e o mecanismo que falta foi dito pelo próprio parser:
+  `expected ... import statement, "using", top-level object`.
+
+A explicação estava escondida à vista: o exemplo do manual (Part 2, slide 9)
+mostra um trecho que **começa na linha 115**. As primeiras 114 linhas, com os
+`import`/`using`, estão fora do recorte. Este emissor reproduziu fielmente o que
+estava visível, e por isso produz um arquivo **sem preâmbulo**.
+
+O que falta é pequeno e identificado: o preâmbulo de importação, a posição correta
+do `binding SOMEIP` e o tipo admissível de evento. O mapeamento campo a campo
+continua válido — o parser reclamou de POSIÇÃO e de ARTEFATO AUSENTE, nunca do
+significado dos identificadores. Ver `docs/VCDL.md`.
+
 ⚠️ **O QUE FOI VERIFICADO E O QUE NÃO FOI.** A gramática abaixo vem do manual da
 Vector versionado em `docs/referencias/` (Part 2, slides 7 a 13) e da ajuda
 online do CANoe. Foi lida, não adivinhada. **Mas a saída deste emissor ainda não
