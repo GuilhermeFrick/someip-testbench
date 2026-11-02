@@ -33,6 +33,9 @@ import time
 
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sd_features import SD_NOMES, SdStreamer  # noqa: E402
+
 CLASSES = ["normal", "dos", "fuzzy", "mitm_single", "mitm_multi"]
 CLASSE_DO_PAPEL = {"dos": 1, "fuzzy": 2, "mitm_single": 3, "mitm_relay": 4, "mitm_impostor": 4}
 CENARIOS = ["none", "dos", "fuzzy", "mitm_single", "mitm_multi"]
@@ -56,20 +59,20 @@ def le_macs(path):
 
 
 def pacotes(pcap, macs, ref):
-    """(pacote parseado, classe pelo MAC), na ordem da captura. Só o que o parser aceita."""
+    """(pacote parseado, classe pelo MAC, quadro cru), na ordem da captura. Só o que o parser aceita."""
     from scapy.utils import RawPcapReader
     for raw, meta in RawPcapReader(pcap):
         p = ref.someip.parse(raw, ref._ts(meta))
         if p is None:
             continue
-        yield p, macs.get(bytes(raw[6:12]).hex(":"), 0)
+        yield p, macs.get(bytes(raw[6:12]).hex(":"), 0), raw
 
 
 def ajusta_bytemodels(fontes, ref):
     """Modelos de bytes no tráfego BENIGNO das fontes, como fit_bytemodels() da C1."""
     models = {k: ref.ByteModel(ref.L[k], 1.0) for k in ref.L}
     for pcap, macs in fontes:
-        for p, classe in pacotes(pcap, macs, ref):
+        for p, classe, _raw in pacotes(pcap, macs, ref):
             if classe != 0:
                 continue
             if p.pl_l4:
@@ -94,11 +97,17 @@ def carrega_bytemodels(npz, ref):
 
 
 def extrai(pcap, macs, models, ref, so_fim=None):
-    """Features cruas e rótulos de um PCAP. `so_fim` = fração final a manter (0.3 no Kim)."""
+    """Features cruas e rótulos de um PCAP. `so_fim` = fração final a manter (0.3 no Kim).
+
+    Com `ref.sd` ligado, acrescenta as 5 features de SD (sd_features.py) depois das 16."""
     st = ref.FeatureStreamer()
+    sds = SdStreamer() if getattr(ref, "sd", False) else None
     X, y = [], []
-    for p, classe in pacotes(pcap, macs, ref):
-        X.append(st.step(p, models))
+    for p, classe, raw in pacotes(pcap, macs, ref):
+        f = tuple(st.step(p, models))
+        if sds is not None:
+            f = f + sds.step(raw, p.src, p.dst, p.service_id, p.ts)
+        X.append(f)
         y.append(classe)
     X = np.asarray(X, dtype=np.float64)
     y = np.asarray(y, dtype=np.int64)
@@ -174,6 +183,7 @@ def main():
     ap.add_argument("--novelty", action="append", default=[], help="rodada só benigna com conteúdo novo")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-jobs", type=int, default=4)
+    ap.add_argument("--sd", action="store_true", help="acrescenta as 5 features de SD (sd_features.py)")
     ap.add_argument("--features", default="",
                     help="features do modelo da bancada, por nome e separadas por vírgula; vazio = as 16")
     a = ap.parse_args()
@@ -187,10 +197,10 @@ def main():
     import pipeline
     import xgboost as xgb
     ref = types.SimpleNamespace(someip=someip, _ts=extract._ts, L=extract.L, ByteModel=bytemodel.ByteModel,
-                                FeatureStreamer=extract_ext.FeatureStreamer)
+                                FeatureStreamer=extract_ext.FeatureStreamer, sd=a.sd)
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
-    nomes = extract_ext.FEATURE_NAMES
+    nomes = list(extract_ext.FEATURE_NAMES) + (SD_NOMES if a.sd else [])
     cols = list(range(len(nomes))) if not a.features else [nomes.index(n.strip()) for n in a.features.split(",")]
     print("[0] modelo da bancada com %d feature(s): %s" % (len(cols), ", ".join(nomes[i] for i in cols)))
 
@@ -221,7 +231,7 @@ def main():
     mm_kim = (mmk[0], mmk[1])
     clf_kim = xgb.Booster(model_file=os.path.join(a.kim_art, "model_16.json"))
 
-    modelos = {"kim": (clf_kim, bm_kim, mm_kim, list(range(len(nomes)))), "bancada": (clf_banc, bm_banc, mm_banc, cols)}
+    modelos = {"kim": (clf_kim, bm_kim, mm_kim, list(range(16))), "bancada": (clf_banc, bm_banc, mm_banc, cols)}
     resultados = {}
 
     def junta(itens, modelo, so_fim=None):

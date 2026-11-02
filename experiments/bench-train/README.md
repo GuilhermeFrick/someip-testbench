@@ -97,3 +97,26 @@ as estruturais (tempo e tamanho) descrevem o tráfego, não o que ele carrega.
 O que ainda não é bom: MITM multi no Kim (0,20) e MITM single na bancada (0,69). Nenhuma das 5
 features descreve o Service Discovery (ofertas por origem, mais de um provedor por serviço, StopOffer
 de quem não é o provedor), e é por SD que os quatro ataques acontecem.
+
+## Checagem simétrica: treino no Kim, teste na bancada (`train_kim.py`)
+
+Mesmo split da C1 (primeiros 70% de cada PCAP do Kim para treino, últimos 30% para teste), rótulo
+pelo MAC; modelos de bytes no PCAP benigno inteiro, como a C1.
+
+| modelo treinado no Kim | FP no Kim | **FP na bancada** | FP carro andando | Kim: DoS / Fuzzy / MITM s / MITM m | bancada: DoS / Fuzzy / MITM s / MITM m |
+|---|---:|---:|---:|---|---|
+| 16 features, rótulo MAC (`c1_mac`) | **0,86%** | 5,4% | 0,65% | 1,00 / 1,00 / 1,00 / **0,99** | 0,95 / 1,00 / 0,85 / 0,01 |
+| 5 sem conteúdo | 1,5% | **0,05%** | **0,04%** | 0,75 / 1,00 / 0,99 / 0,25 | 0,60 / 1,00 / 0,69 / 0,25 |
+
+**Leitura.**
+
+1. **A transferência das features sem conteúdo vale nos dois sentidos.** Treinado só no Kim, o
+   modelo de 5 features tem 0,05% de falso positivo na bancada, contra 5,4% das 16 features. Com o
+   sentido inverso (treino na bancada, 3,6% no Kim), o resultado fica completo.
+2. **Corrigir o rótulo melhora a própria C1.** Com o rótulo pelo MAC, os 163 188 `StopOffer`
+   forjados entram no treino como ataque, e o recall do MITM multi no Kim sobe de 0,71 (artefatos da
+   C1, rótulo por IP) para **0,991**. Dentro do domínio, a C1 corrigida fica com 0,86% de falso
+   positivo e todas as famílias acima de 0,99.
+3. **O dilema:** dentro do domínio as 16 features vencem; fora dele só as 5 se sustentam, mas detectam
+   pouco o MITM multi (0,25) e medianamente o DoS (0,60 a 0,75). É o buraco que as features de SD
+   (`sd_features.py`) foram desenhadas para cobrir.

@@ -55,7 +55,7 @@ def main():
         for nome, (clf, bm, mm) in modelos.items():
             st = ref.FeatureStreamer()
             X, y, info = [], [], []
-            for p, classe in tb.pacotes(pcap, macs, ref):
+            for p, classe, _raw in tb.pacotes(pcap, macs, ref):
                 X.append(st.step(p, bm))
                 y.append(classe)
                 info.append((p.src, "SD" if p.is_sd else ("svc 0x%04x" % p.service_id if p.service_id >= 0 else
