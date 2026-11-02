@@ -169,6 +169,13 @@ printf '
 ARGS=()
 roda test_sd_raw tests/test_sd_raw.cpp
 
+# -------------------------------------------- o canal de controle do injetor
+printf '
+######## test_ctrl_channel ########
+'
+ARGS=()
+roda test_ctrl_channel tests/test_ctrl_channel.cpp
+
 # -------------------------------------------- o plano do no generico
 # A tabela acima e conferida na ESTRUTURA. Este confere o que o no generico
 # DERIVA dela: quais eventos publicar, e em quais eventgroups assinar. Roda sem

@@ -39,6 +39,15 @@ PAYLOAD="${PAYLOAD:-counter}"
 # vazio por padrão porque o filtro faz parte da medição.
 SENSOR="${SENSOR:-1}"
 IDS_FILTER="${IDS_FILTER:-}"
+# Fase D: cada injetor também fica na rede CTRL, que nunca é capturada, e recebe
+# comandos nela (src/nodes/CtrlChannel.hpp, tools/inj_ctl.py). CTRL_PLAN é um roteiro
+# "segundos:comando;segundos:comando", com o tempo contado de T0, por exemplo
+#     CTRL_PLAN="25:off;40:on"
+CTRL_NET="${CTRL_NET:-someip-ctrl}"
+CTRL_SUBNET="${CTRL_SUBNET:-172.29.0.0/24}"
+CTRL_PORT="${CTRL_PORT:-7000}"
+CTRL_PLAN="${CTRL_PLAN:-}"
+CTRL_PREFIXO="$(echo "$CTRL_SUBNET" | cut -d/ -f1 | cut -d. -f1-3)."
 OUT="${OUT:-$HERE/out-$SCENARIO}"
 WORK="build/scn"
 CFG="$WORK/cfg"
@@ -60,7 +69,7 @@ NOMES=""
 limpa() {
     [ -n "$NOMES" ] && docker rm -f $NOMES >/dev/null 2>&1
     docker rm -f scn-cap scn-sensor $(docker ps -aq --filter name=scn-inj-) >/dev/null 2>&1
-    docker network rm "$NET" >/dev/null 2>&1
+    docker network rm "$NET" "$CTRL_NET" >/dev/null 2>&1
 }
 limpa
 trap limpa EXIT
@@ -154,6 +163,8 @@ echo "[build] ok"
 # ------------------------------------------------------------ 3. rede e captura
 docker network create --subnet "$SUBNET" "$NET" >/dev/null || exit 1
 BRIDGE="br-$(docker network inspect "$NET" --format '{{.Id}}' | cut -c1-12)"
+# A rede de controle é OUTRA bridge, e a captura só escuta a do barramento.
+docker network create --subnet "$CTRL_SUBNET" "$CTRL_NET" >/dev/null || exit 1
 docker run -d --name scn-cap --network host --cap-add NET_ADMIN --cap-add NET_RAW \
     -v "$OUT":/out "$IMG" sh -c "exec tcpdump -i $BRIDGE -w /out/scn.pcap -U -s 0" >/dev/null || exit 1
 sleep 2
@@ -205,14 +216,26 @@ sobe_injetor() {  # papel:octeto
     local IP MAC
     IP="$(ip_de "$1")"
     MAC="$(mac_de "$1")"
-    docker run -d --name "scn-inj-$PAPEL" --network "$NET" --ip "$IP" --mac-address "$MAC" \
+    local CIP="${CTRL_PREFIXO}${1##*:}"
+    # create + connect + start: a interface de controle tem de existir quando o injetor
+    # abre o canal. O barramento é a eth0 (a rota multicast vai nela); o controle, a eth1.
+    # Com duas redes o Docker NÃO garante que o barramento seja a eth0: numa rodada do MITM
+    # multi o .15 saiu com o SD inteiro na rede de controle e nunca achou o .14. A rota
+    # multicast vai na interface que TEM o endereço do barramento, achada pelo IP.
+    local ROTA_INJ="DEV=\$(ip -o -4 addr show | awk '{split(\$4, a, \"/\"); if (a[1] == \"$IP\") print \$2}')
+               ip route add 224.0.0.0/4 dev \$DEV 2>/dev/null"
+    docker create --name "scn-inj-$PAPEL" --network "$NET" --ip "$IP" --mac-address "$MAC" \
         --cap-add NET_ADMIN --cap-add NET_RAW \
         -v "$ROOT":/w -w /w "$IMG" \
-        sh -c "$ROTA
+        sh -c "$ROTA_INJ
                export VSOMEIP_CONFIGURATION=/w/$CFG/vsomeip-inj-$PAPEL.json
                export INJ_SCENARIO=$PAPEL INJ_REPORT_SECONDS=15 INJ_LOCAL_IP=$IP
+               export INJ_CTRL_ADDR=$CIP:$CTRL_PORT
                exec ./build/bin/injector_ecu" >/dev/null || { echo "ERRO: injetor $PAPEL"; exit 1; }
-    marca "sobe injetor $PAPEL ($IP, MAC $MAC)"
+    docker network connect --ip "$CIP" "$CTRL_NET" "scn-inj-$PAPEL" || { echo "ERRO: ctrl $PAPEL"; exit 1; }
+    docker start "scn-inj-$PAPEL" >/dev/null || { echo "ERRO: start $PAPEL"; exit 1; }
+    echo "$CIP:$CTRL_PORT $PAPEL" >> "$OUT/injector.ctrl"
+    marca "sobe injetor $PAPEL ($IP, MAC $MAC, ctrl $CIP:$CTRL_PORT)"
     echo "$MAC $PAPEL" >> "$OUT/injector.mac"
     echo "[injetor] $PAPEL em $IP, MAC $MAC"
 }
@@ -248,7 +271,27 @@ else
     sobe_injetor "fuzzy:17"
 fi
 echo "[coletando ${DUR}s]"
-sleep "$DUR"
+FIM=$(( $(date +%s) + DUR ))
+# Roteiro de controle: cada passo vai a todos os injetores da rodada, pela rede ctrl, e
+# entra na linha do tempo com a resposta deles.
+if [ -n "$CTRL_PLAN" ]; then
+    IFS=';' read -r -a PASSOS <<< "$CTRL_PLAN"
+    for PASSO in "${PASSOS[@]}"; do
+        QUANDO="${PASSO%%:*}"
+        CMD="${PASSO#*:}"
+        ALVO_T=$(LC_ALL=C awk -v t0="$T0" -v q="$QUANDO" 'BEGIN { printf "%.3f", t0 + q }')
+        AGORA=$(date +%s.%N)
+        ESPERA=$(LC_ALL=C awk -v a="$ALVO_T" -v b="$AGORA" 'BEGIN { d = a - b; printf "%.3f", (d > 0 ? d : 0) }')
+        sleep "$ESPERA"
+        while read -r END PAPEL; do
+            RESP="$(python3 tools/inj_ctl.py --to "$END" $CMD 2>&1 | sed -E 's/^[0-9.]+ //')"
+            marca "ctrl $PAPEL $RESP"
+            echo "[ctrl] $PAPEL: $RESP"
+        done < "$OUT/injector.ctrl"
+    done
+fi
+RESTA=$(( FIM - $(date +%s) ))
+[ "$RESTA" -gt 0 ] && sleep "$RESTA"
 
 # ---------------------------------------------------------------- 5. encerrar
 for INJ in $INJETORES; do docker kill --signal=SIGTERM "scn-inj-${INJ%%:*}" >/dev/null 2>&1; done
@@ -286,6 +329,10 @@ done
 echo
 echo "===== o barramento, pela regra do dataset ====="
 python3 tools/attack_flows.py "$OUT/scn.pcap" --prefix "$PREFIXO"
+echo
+echo "===== atividade dos injetores no barramento (janelas de 5 s) ====="
+python3 tools/attack_activity.py --pcap "$OUT/scn.pcap" --macs "$OUT/injector.mac" \
+    --timeline "$OUT/linha-do-tempo.txt" --ctrl-port "$CTRL_PORT" | sed 's/^/  /'
 echo
 echo "===== ritmo das ofertas ====="
 python3 tools/offer_cadence.py "$OUT/scn.pcap" | head -8

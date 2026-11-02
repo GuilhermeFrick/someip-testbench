@@ -55,6 +55,9 @@
  *            - @c INJ_SO_SESSION        @c fixed (always 1) or @c increment.
  *            - @c INJ_FUZZ_FIRST / @c INJ_FUZZ_COUNT  fuzzy (0x2001 / 200).
  *            - @c INJ_RUN_SECONDS, @c INJ_READY_TIMEOUT_MS, @c INJ_REPORT_SECONDS.
+ *            - @c INJ_CTRL_ADDR         address:port on the @c ctrl network to take commands on
+ *                                       (src/nodes/CtrlChannel.hpp); unset, no control channel.
+ *            - @c INJ_START_ENABLED     0 to come up with the attack off and wait for @c on (1).
  */
 #include <atomic>
 #include <chrono>
@@ -72,6 +75,7 @@
 #include "src/libecu/NodeRuntime.hpp"
 #include "src/nodes/MatrixPlan.hpp"
 #include "src/nodes/PayloadBank.hpp"
+#include "src/nodes/CtrlChannel.hpp"
 #include "src/nodes/SdRawEmitter.hpp"
 
 namespace
@@ -628,15 +632,48 @@ int main()
     {
         std::printf("[injector] registrado no routing manager\n");
     }
-    const ara::core::Result<void> ofertado = runtime.Offer();
-    if (!ofertado.HasValue())
+    /* Canal de controle na rede ctrl, nunca capturada (fase D). Sem ele o injetor ataca do
+     * começo ao fim, como antes. */
+    ids::nodes::CtrlChannel ctrl;
+    const std::string       ctrlEnd = Env("INJ_CTRL_ADDR", "");
+    if (!ctrlEnd.empty())
     {
-        std::printf("[injector] ERRO ofertando: %s\n", ofertado.Error().Message());
-        return 1;
+        const std::size_t   doisPontos = ctrlEnd.rfind(':');
+        const std::uint16_t porta      = static_cast<std::uint16_t>(
+            (doisPontos == std::string::npos) ? 7000U : std::strtoul(ctrlEnd.substr(doisPontos + 1U).c_str(), nullptr, 10));
+        const std::string erro = ctrl.Open(ctrlEnd.substr(0U, doisPontos), porta);
+        if (!erro.empty())
+        {
+            std::printf("[injector] ERRO no canal de controle: %s\n", erro.c_str());
+            return 1;
+        }
+        else
+        {
+            std::printf("[injector] controle em %s\n", ctrlEnd.c_str());
+        }
     }
     else
     {
-        std::printf("[injector] ofertas no ar\n");
+        /* No control channel. */
+    }
+
+    bool ligado = (Env("INJ_START_ENABLED", "1") != "0");
+    if (ligado)
+    {
+        const ara::core::Result<void> ofertado = runtime.Offer();
+        if (!ofertado.HasValue())
+        {
+            std::printf("[injector] ERRO ofertando: %s\n", ofertado.Error().Message());
+            return 1;
+        }
+        else
+        {
+            std::printf("[injector] ofertas no ar\n");
+        }
+    }
+    else
+    {
+        std::printf("[injector] subiu DESLIGADO; esperando \"on\" no canal de controle\n");
     }
 
     /* Assinatura: o .14 na VDE, o .15 no repasse. Espera em passos, porque o provedor pode
@@ -714,8 +751,79 @@ int main()
 
         std::chrono::steady_clock::time_point acorda = agora + kIdleStep;
 
+        /* Comandos. "off" faz o que uma ECU faria para parar: retira as ofertas e para de
+         * publicar e de mandar StopOffer. "on" anuncia de novo. Cada comando vai ao log com
+         * o horário epoch, para alinhar com a captura e com os security events. */
+        std::string linhaCtrl;
+        while (ctrl.IsOpen() && ctrl.Poll(linhaCtrl))
+        {
+            const ids::nodes::CtrlCommand cmd   = ids::nodes::ParseCtrl(linhaCtrl);
+            const double                  epoch = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+            std::string                   resposta;
+            if (cmd.kind == ids::nodes::CtrlCommand::Kind::On)
+            {
+                if (!ligado)
+                {
+                    static_cast<void>(runtime.Offer());
+                    proximoEnvio = agora;
+                    proximoSo    = agora;
+                }
+                else
+                {
+                    /* Already on. */
+                }
+                ligado   = true;
+                resposta = "ok on";
+            }
+            else if (cmd.kind == ids::nodes::CtrlCommand::Kind::Off)
+            {
+                if (ligado)
+                {
+                    runtime.StopOffer();
+                }
+                else
+                {
+                    /* Already off. */
+                }
+                ligado = false;
+                {
+                    std::lock_guard<std::mutex> lock(rec.mutex);
+                    rec.pendentes = 0U;
+                }
+                resposta = "ok off";
+            }
+            else if (cmd.kind == ids::nodes::CtrlCommand::Kind::PeriodMs)
+            {
+                pub.periodoMs = cmd.number;
+                resposta      = "ok period_ms " + std::to_string(cmd.number);
+            }
+            else if (cmd.kind == ids::nodes::CtrlCommand::Kind::SoPeriodMs)
+            {
+                so.periodoMs = cmd.number;
+                resposta     = "ok so_period_ms " + std::to_string(cmd.number);
+            }
+            else if (cmd.kind == ids::nodes::CtrlCommand::Kind::SoTarget)
+            {
+                so.destino         = cmd.address;
+                so.cabecalho.dstIp = cmd.address;
+                resposta           = so.ativo ? ("ok so_target " + linhaCtrl.substr(linhaCtrl.rfind(' ') + 1U))
+                                              : std::string("erro este cenario nao manda StopOffer");
+            }
+            else if (cmd.kind == ids::nodes::CtrlCommand::Kind::Status)
+            {
+                resposta = std::string("ok ") + cenario + (ligado ? " on" : " off") + " period_ms " + std::to_string(pub.periodoMs) +
+                           " enviados " + std::to_string(enviados) + " stopoffer " + std::to_string(stopOffers);
+            }
+            else
+            {
+                resposta = "erro " + cmd.problem;
+            }
+            ctrl.Reply(resposta);
+            std::printf("[injector] ctrl epoch=%.6f \"%s\" -> %s\n", epoch, linhaCtrl.c_str(), resposta.c_str());
+        }
+
         /* Publicação: constante, banco, ou (no .14) o último valor recebido da VDE. */
-        if (pub.ativo && (agora >= proximoEnvio))
+        if (ligado && pub.ativo && (agora >= proximoEnvio))
         {
             bool temConteudo = true;
             if (repassa)
@@ -773,7 +881,13 @@ int main()
 
         /* StopOffer: periódico (MITM single) ou um por repasse recebido (MITM multi). */
         std::uint64_t aEnviar = 0U;
-        if (so.ativo && so.porRecepcao)
+        if (!ligado)
+        {
+            /* Desligado: os repasses que chegam não viram StopOffer, nem agora nem depois. */
+            std::lock_guard<std::mutex> lock(rec.mutex);
+            rec.pendentes = 0U;
+        }
+        else if (so.ativo && so.porRecepcao)
         {
             std::lock_guard<std::mutex> lock(rec.mutex);
             aEnviar       = (rec.pendentes < kMaxStopOffersPerTurn) ? rec.pendentes : kMaxStopOffersPerTurn;

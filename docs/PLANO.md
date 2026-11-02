@@ -152,6 +152,11 @@ serviços falsos), com registro de cada comando e seu instante.
 **Critério de aceite:** nenhum quadro de controle na captura do barramento; o registro de comandos
 permite alinhar o início do ataque com a detecção.
 
+**Resultado (02/11): passou.** Injetores na rede `ctrl`, comandos `on`/`off`/`status`/`set`
+(`src/nodes/CtrlChannel.hpp`, `tools/inj_ctl.py`, roteiro `CTRL_PLAN`), zero quadros de controle na
+captura do barramento, tráfego do ataque indo a zero com `off` e voltando com `on`, inclusive com dois
+injetores (MITM multi). Detalhe em `platform/scenario-live/README.md`.
+
 ## Fase E — Painel de observação
 
 **Objetivo:** topologia das 9 ECUs com as ligações medidas, tráfego lido do fio, ECU marcada quando

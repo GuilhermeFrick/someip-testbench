@@ -113,3 +113,39 @@ tráfego normal. Na bancada o rótulo é o MAC: `out-*/injector.mac` lista o MAC
 As quatro famílias rodam ao vivo no barramento e passaram no critério de aceite. Depois da
 reorganização para dois injetores, DoS, MITM single e Fuzzy foram rodados de novo (40 s): 59,2%/40,8%,
 68,7%/31,3% e 100% UDP, e a suíte inteira passou na imagem 3.5.6.
+
+## Controle dos injetores durante a rodada (fase D)
+
+Cada injetor fica também na rede `ctrl` (`CTRL_SUBNET`, padrão 172.29.0.0/24), que **nunca é
+capturada**, e aceita comandos de uma linha em UDP (`src/nodes/CtrlChannel.hpp`): `on`, `off`,
+`status`, `set period_ms N`, `set so_period_ms N`, `set so_target A.B.C.D`. `off` faz o que uma ECU
+faria para parar: retira as ofertas e para de publicar e de mandar `StopOffer`; `on` anuncia de novo.
+Os comandos saem de `tools/inj_ctl.py`, e um roteiro pode ser dado na rodada:
+
+```sh
+CTRL_PLAN="15:off;30:on" SCENARIO=mitm_multi bash platform/scenario-live/run.sh
+```
+
+Cada comando entra na linha do tempo com a resposta do injetor, e `tools/attack_activity.py` mostra o
+tráfego de cada injetor em janelas de 5 s com os comandos marcados. Rodada de teste (MITM multi, dois
+injetores, repetida duas vezes com o mesmo resultado):
+
+| janela (s) | .15 (impostor) | .14 (repasse) | comando |
+|---|---:|---:|---|
+| 10–15 | 1 140 | 749 | |
+| 15–20 | 12 | 11 | `off` nos dois |
+| 20–30 | 0 | 0 | |
+| 30–35 | 1 107 | 536 | `on` nos dois |
+
+**Quadros de controle na captura do barramento: 0.**
+
+Dois achados no caminho:
+
+- **Com duas redes o Docker não garante que o barramento seja a `eth0`**, e a rota padrão passa para a
+  rede de controle. Numa rodada o .15 saiu com o SD inteiro na rede de controle e nunca achou o .14.
+  A rota multicast do injetor agora vai na interface que tem o IP do barramento.
+- **Quando desligado, o injetor do MITM single ainda põe IGMP no fio** (~90 quadros/s): a pilha vsomeip
+  configurada para anunciar a cada 10 ms sai e entra no grupo do SD o tempo todo ("Didn't receive a
+  multicast SD message for 22ms"). Não é ataque, é a pilha. O dataset tem o mesmo efeito: o IGMP é
+  17,7% dos quadros do atacante do DoS e 15,9% do MITM single (`tools/attack_activity.py`,
+  composição medida na fase C).
