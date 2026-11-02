@@ -60,7 +60,8 @@ case "$SCENARIO" in
     mitm_single) INJETORES="mitm_single:13" ;;
     mitm_multi)  INJETORES="mitm_relay:14 mitm_impostor:15" ;;
     fuzzy)       INJETORES="fuzzy:17" ;;
-    *) echo "ERRO: SCENARIO deve ser dos, mitm_single, mitm_multi ou fuzzy"; exit 2 ;;
+    none)        INJETORES="" ;;   # só o barramento benigno: mede o falso positivo
+    *) echo "ERRO: SCENARIO deve ser dos, mitm_single, mitm_multi, fuzzy ou none"; exit 2 ;;
 esac
 ip_de()  { echo "${PREFIXO}${1##*:}"; }
 mac_de() { echo "$(ip_de "$1")" | awk -F. '{printf "02:42:%02x:%02x:%02x:%02x", $1, $2, $3, $4}'; }
@@ -208,6 +209,7 @@ sobe_no() {
         sh -c "$ROTA
                export VSOMEIP_CONFIGURATION=/w/$CFG/vsomeip-$NO.json
                export ECU_NODE=$NO ECU_PAYLOAD=$PAYLOAD ECU_REPORT_SECONDS=15
+               export ECU_PAYLOAD_FILE=${PAYLOAD_FILE:-build/cfg/payloads.bin}
                exec ./build/bin/generic_ecu" >/dev/null || { echo "ERRO: $NO"; exit 1; }
     marca "sobe $NO ($IP)"
 }
@@ -263,13 +265,18 @@ elif [ "$SCENARIO" = "mitm_multi" ]; then
     for n in $PROVEDORES; do sobe_no "$n"; done
     sleep 3
     sobe_injetor "mitm_impostor:15"
-else
+elif [ "$SCENARIO" = "fuzzy" ]; then
     for n in $PROVEDORES; do sobe_no "$n"; done
     sleep 1
     for n in $CONSUMIDORES; do sobe_no "$n"; done
     sleep 10
     sobe_injetor "fuzzy:17"
+else
+    for n in $PROVEDORES; do sobe_no "$n"; done
+    sleep 1
+    for n in $CONSUMIDORES; do sobe_no "$n"; done
 fi
+touch "$OUT/injector.mac" "$OUT/injector.ctrl"
 echo "[coletando ${DUR}s]"
 FIM=$(( $(date +%s) + DUR ))
 # Roteiro de controle: cada passo vai a todos os injetores da rodada, pela rede ctrl, e

@@ -149,3 +149,27 @@ Dois achados no caminho:
   multicast SD message for 22ms"). Não é ataque, é a pilha. O dataset tem o mesmo efeito: o IGMP é
   17,7% dos quadros do atacante do DoS e 15,9% do MITM single (`tools/attack_activity.py`,
   composição medida na fase C).
+
+## Falso positivo benigno ao vivo (em andamento, 02/11)
+
+`SCENARIO=none` sobe só o barramento benigno, com o sensor ao vivo; como não há ataque, todo security
+event é falso positivo. `PAYLOAD` escolhe o conteúdo das ECUs e `PAYLOAD_FILE` o banco usado pela
+política `dataset` (gerado com `tools/extract_payloads.py` na imagem `someip-parity:1`, que tem scapy).
+
+| conteúdo benigno | pacotes | security events | falso positivo |
+|---|---:|---:|---:|
+| `counter` (sintético) | 102 035 | 9 623 | **9,43%** |
+| `dataset` (bytes do Kim) | 102 012 | 402 | **0,39%** |
+
+Reproduz ao vivo, no vsomeip 3.5.6, o diagnóstico feito offline na 3.6.4 (`experiments/eval-pcap/
+RESULTADOS.md`: 9,42% → 0,36%). Com `counter`, **94% dos eventos falsos são da VDE classificada como
+MITM single** (9 021 de 9 623). Com os bytes do dataset sobram ~400, entre eles ~30 por consumidora
+como MITM multi (provável resíduo de Service Discovery).
+
+**Hipótese em teste:** no dataset a VDE quase não muda de valor (99,6% das notificações repetem a
+anterior; o carro está parado), e o único sinal de velocidade que muda o tempo todo é o do atacante
+do MITM single. Se o detector aprendeu "0x1001 com valor mudando = MITM single", um veículo em
+movimento (CARLA) vai parecer ataque. O teste: rodadas com a VDE `constant`, `random` e com um sinal de
+velocidade plausível em movimento (`build/cfg/payloads-vde-andando.bin`: o banco do dataset com o
+fluxo 0x1001/0x0001 trocado pelo sinal que o atacante do dataset publicou). Interrompido: o `runner`
+saiu da rede durante a rodada.
