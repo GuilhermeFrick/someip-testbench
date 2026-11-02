@@ -197,6 +197,34 @@ std::vector<std::uint8_t> MontaPayload(PayloadPolicy policy, Publicacao &pub)
 }
 
 /**
+ * @brief Name of a transport, for the log lines.
+ * @param[in] t Transport to name.
+ * @return A short word. @c "indefinido" is the one that matters: it means the stack chooses, and
+ *         that is what gave 65% TCP where the reference dataset has 99,1%.
+ */
+const char *NomeDoTransporte(ids::ecu::Transport t)
+{
+    const char *nome = "indefinido";
+    if (t == ids::ecu::Transport::Reliable)
+    {
+        nome = "tcp";
+    }
+    else if (t == ids::ecu::Transport::Unreliable)
+    {
+        nome = "udp";
+    }
+    else if (t == ids::ecu::Transport::Both)
+    {
+        nome = "tcp+udp";
+    }
+    else
+    {
+        /* Unspecified. */
+    }
+    return nome;
+}
+
+/**
  * @brief Print the nodes the table knows, for when ECU_NODE names none of them.
  * @return None.
  */
@@ -219,9 +247,6 @@ int main()
      * process ends. A node killed mid-run would otherwise appear to have printed nothing, which has
      * already cost two runs on this bench. */
     static_cast<void>(std::setvbuf(stdout, nullptr, _IOLBF, 0));
-
-    std::signal(SIGINT, OnSignal);
-    std::signal(SIGTERM, OnSignal);
 
     const std::string nome = Env("ECU_NODE", "");
     if (nome.empty())
@@ -273,6 +298,21 @@ int main()
     }
     ids::ecu::NodeRuntime &runtime = *criado.Value();
 
+    /* Os handlers de sinal vao DEPOIS do Create(), e a ordem e o ponto.
+     *
+     * Compilado com VSOMEIP_ENABLE_SIGNAL_HANDLING, o init() do vsomeip -- que roda
+     * dentro do Create() -- registra um boost::asio::signal_set para SIGINT e
+     * SIGTERM cujo unico efeito e chamar application::stop(). Esse registro usa
+     * sigaction e SOBRESCREVE um std::signal instalado antes dele.
+     *
+     * Instalar antes custou uma rodada: `docker kill --signal=SIGTERM` derrubava a
+     * PILHA e deixava este laco girando, com o notify() falhando em silencio e o
+     * contador de enviados subindo sobre nada. O container ficava `running` e o
+     * resumo final nunca saia. Instalando depois, o sinal chega aqui, o laco sai e
+     * o destrutor desce a pilha na ordem. */
+    std::signal(SIGINT, OnSignal);
+    std::signal(SIGTERM, OnSignal);
+
     /* ---- declaracao: tudo antes do Start(), que e o que a pilha exige ---- */
 
     for (std::size_t i = 0U; i < plano.node->provideCount; ++i)
@@ -300,7 +340,7 @@ int main()
          * payload at the recovered cadence instead. */
         const ara::core::Result<void> ofertado =
             runtime.ProvideEvent(ep.service, ep.instance, ep.notifier, ids::ecu::EventgroupIds(ep.eventgroups.data(), ep.eventgroups.size()),
-                                 ep.isField, std::chrono::milliseconds::zero());
+                                 ep.isField, std::chrono::milliseconds::zero(), ep.transport);
         if (!ofertado.HasValue())
         {
             std::printf("[%s] ERRO declarando evento 0x%04X: %s\n", plano.node->name, static_cast<unsigned>(ep.notifier),
@@ -320,8 +360,9 @@ int main()
         pub.rng.seed(static_cast<std::uint32_t>((static_cast<std::uint32_t>(ep.service) << 16U) | ep.notifier));
         publicacoes.push_back(pub);
 
-        std::printf("[%s]   publica %s 0x%04X, %zu B cada %u ms, %zu eventgroup(s)\n", plano.node->name, ep.serviceName.c_str(),
-                    static_cast<unsigned>(ep.notifier), ep.bytes, static_cast<unsigned>(ep.cycleMs), ep.eventgroups.size());
+        std::printf("[%s]   publica %s 0x%04X, %zu B cada %u ms, %zu eventgroup(s), %s\n", plano.node->name, ep.serviceName.c_str(),
+                    static_cast<unsigned>(ep.notifier), ep.bytes, static_cast<unsigned>(ep.cycleMs), ep.eventgroups.size(),
+                    NomeDoTransporte(ep.transport));
     }
 
     for (std::size_t i = 0U; i < plano.consumes.size(); ++i)
@@ -427,7 +468,8 @@ int main()
              it != cp.subscriptions.end(); ++it)
         {
             const ara::core::Result<void> assinado =
-                runtime.Subscribe(cp.service, cp.instance, it->first, ids::ecu::EventgroupIds(it->second.data(), it->second.size()));
+                runtime.Subscribe(cp.service, cp.instance, it->first, ids::ecu::EventgroupIds(it->second.data(), it->second.size()),
+                                  cp.transport);
             if (!assinado.HasValue())
             {
                 std::printf("[%s] ERRO assinando 0x%04X de %s: %s\n", plano.node->name, static_cast<unsigned>(it->first),
@@ -435,8 +477,8 @@ int main()
             }
             else
             {
-                std::printf("[%s]   assina %s 0x%04X em %zu eventgroup(s)\n", plano.node->name, cp.serviceName.c_str(),
-                            static_cast<unsigned>(it->first), it->second.size());
+                std::printf("[%s]   assina %s 0x%04X em %zu eventgroup(s), %s\n", plano.node->name, cp.serviceName.c_str(),
+                            static_cast<unsigned>(it->first), it->second.size(), NomeDoTransporte(cp.transport));
             }
         }
     }
@@ -462,6 +504,20 @@ int main()
         else
         {
             /* Either it runs until a signal, or there is time left. */
+        }
+
+        /* A pilha pode cair sob os pes do laco, e o notify() nao reclama: devolve
+         * sucesso e nada vai para o barramento. Sem esta checagem o no seguiria
+         * contando envios sobre uma pilha morta, que foi exatamente o sintoma que a
+         * ordem dos sinais acima produzia. */
+        if (!runtime.IsRegistered())
+        {
+            std::printf("[%s] a pilha saiu do ar (deixou de estar registrada); encerrando\n", plano.node->name);
+            break;
+        }
+        else
+        {
+            /* Still registered. */
         }
 
         /* Every event that is due goes out now, and is rescheduled from its PREVIOUS due time, so a

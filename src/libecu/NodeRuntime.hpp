@@ -117,15 +117,20 @@ class NodeRuntime final
      * @param[in] isField     Whether the matrix calls it a field, which keeps its last value for
      *                        late subscribers.
      * @param[in] cycle       Cyclic update period; zero means the event is only sent on demand.
+     * @param[in] transport   Which endpoint the notifications travel on.
      * @return Nothing on success, or an error.
      * @retval ::ids::ecu::EcuErrc::InvalidConfiguration @p notifier is zero or @p eventgroups is empty.
      * @retval ::ids::ecu::EcuErrc::AlreadyStarted       Called after Start().
      * @retval ::ids::ecu::EcuErrc::ServiceNotDeclared   @p service and @p instance were not provided.
      * @warning Call this BEFORE Offer(). An event declared after the service is offered is not
      *          announced to subscribers that are already there.
+     * @warning @p transport has NO DEFAULT on purpose. A service that announces both a reliable and
+     *          an unreliable endpoint leaves vsomeip to choose, and over the nine reproduced nodes
+     *          that choice gave 65% TCP against the 99,1% of the reference dataset. See
+     *          ::ids::ecu::Transport.
      */
     ara::core::Result<void> ProvideEvent(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups, bool isField,
-                                         std::chrono::milliseconds cycle);
+                                         std::chrono::milliseconds cycle, Transport transport);
 
     /**
      * @brief Declare a service instance this node will consume.
@@ -204,13 +209,16 @@ class NodeRuntime final
      * @param[in] instance    Instance of it.
      * @param[in] notifier    Event or field identifier to receive.
      * @param[in] eventgroups Eventgroups to subscribe to; must not be empty.
+     * @param[in] transport   Which endpoint the notifications are expected on; must match what the
+     *                        provider offered, and has no default for the same reason.
      * @return Nothing on success, or an error.
      * @retval ::ids::ecu::EcuErrc::NotStarted           Start() was not called.
      * @retval ::ids::ecu::EcuErrc::InvalidConfiguration @p notifier is zero or @p eventgroups is empty.
      * @retval ::ids::ecu::EcuErrc::ServiceNotDeclared   The instance was not consumed.
      * @details Call it after WaitUntilAvailable(), and after SetReceiveHandler().
      */
-    ara::core::Result<void> Subscribe(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups);
+    ara::core::Result<void> Subscribe(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups,
+                                      Transport transport);
 
     /**
      * @brief Publish a value on an event of a provided service.

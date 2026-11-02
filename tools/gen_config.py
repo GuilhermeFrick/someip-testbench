@@ -56,6 +56,35 @@ def sd_block(net: dict) -> dict:
     }
 
 
+def transporte_de(svc: dict) -> str:
+    """Em qual endpoint os eventos do serviço viajam: `Reliable`, `Unreliable` ou `Unspecified`.
+
+    Isto não é detalhe de configuração, e há medição para provar. Cada serviço da
+    matriz recuperada anuncia DOIS endpoints, um TCP e um UDP, e o vsomeip trata
+    `RT_UNKNOWN` como "decida por mim". Oferecendo os eventos dos nove nós assim,
+    a captura deu **65% de TCP** onde o dataset de referência tem **99,1%**.
+
+    A ordem de decisão:
+
+    1. `protocol:` declarado no serviço -- é o que a matriz recuperada traz, junto
+       com a porta principal (`port: 30501, protocol: tcp`);
+    2. um único tipo de endpoint -- não há o que escolher;
+    3. dois endpoints e nenhum `protocol:` -- devolve `Unspecified`, e o
+       `tabela_lines` avisa. Deixar implícito é exatamente o caso acima.
+    """
+    declarado = str(svc.get("protocol", "")).lower()
+    if declarado == "tcp":
+        return "Reliable"
+    if declarado == "udp":
+        return "Unreliable"
+    eps = endpoints_de(svc)
+    if set(eps) == {"tcp"}:
+        return "Reliable"
+    if set(eps) == {"udp"}:
+        return "Unreliable"
+    return "Unspecified"
+
+
 def endpoints_de(svc: dict) -> dict:
     """Endpoints do serviço, por protocolo, a partir da matriz.
 
@@ -424,7 +453,7 @@ def main() -> None:
     # e topologia percorrivel em tempo de execucao.
     tab_path = os.path.join(os.path.dirname(os.path.abspath(hpp_path)), "CommMatrixTable.hpp")
     with open(tab_path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("\n".join(matrix_table.tabela_lines(matrix, endpoints_de)))
+        fh.write("\n".join(matrix_table.tabela_lines(matrix, endpoints_de, transporte_de)))
     print(f"  tabela runtime -> {os.path.basename(tab_path)}")
 
     # Lista de eventos de segurança configurados, que o ara::idsm resolve. Sai

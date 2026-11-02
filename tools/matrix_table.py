@@ -112,6 +112,7 @@ def _cabecalho() -> list:
         "    ::ids::ecu::Port       tcpPort;  ///< Reliable port, when there is one.",
         "    bool                   hasUdp;   ///< Whether an unreliable endpoint is declared.",
         "    ::ids::ecu::Port       udpPort;  ///< Unreliable port, when there is one.",
+        "    ::ids::ecu::Transport  transport; ///< Endpoint the events of this service travel on.",
         "};",
         "",
         "/** @brief What one node consumes: a service and the eventgroups it subscribes to. */",
@@ -146,7 +147,7 @@ def _cabecalho() -> list:
     ]
 
 
-def _por_servico(matrix: dict, endpoints_de) -> list:
+def _por_servico(matrix: dict, endpoints_de, transporte_de) -> list:
     L = []
     for nome, svc in matrix["services"].items():
         por_nome = {e["name"]: e for e in svc["events"]}
@@ -193,10 +194,11 @@ def _por_servico(matrix: dict, endpoints_de) -> list:
     for nome in nomes:
         svc = matrix["services"][nome]
         eps = endpoints_de(svc)
-        L.append('        { "%s", 0x%04XU, 0x%04XU, %s, %dU, %s, %dU },'
+        L.append('        { "%s", 0x%04XU, 0x%04XU, %s, %dU, %s, %dU, ::ids::ecu::Transport::%s },'
                  % (nome, svc["id"], svc["instance"],
                     "true" if "tcp" in eps else "false", eps.get("tcp", 0),
-                    "true" if "udp" in eps else "false", eps.get("udp", 0)))
+                    "true" if "udp" in eps else "false", eps.get("udp", 0),
+                    transporte_de(svc)))
     L.append("    };")
     L.append("    return Table<ServiceDesc>{ items, %d };" % len(nomes))
     L.append("}")
@@ -285,10 +287,22 @@ def _por_no(matrix: dict) -> list:
     return L
 
 
-def tabela_lines(matrix: dict, endpoints_de) -> list:
+def tabela_lines(matrix: dict, endpoints_de, transporte_de) -> list:
     """Monta o CommMatrixTable.hpp inteiro.
 
-    `endpoints_de` vem do gen_config, para a regra de "qual porta em qual
-    transporte" existir num lugar só.
+    `endpoints_de` e `transporte_de` vêm do gen_config, para as regras de "qual
+    porta em qual transporte" e "em qual endpoint os eventos viajam" existirem
+    num lugar só.
+
+    Um serviço que anuncia os dois endpoints e não declara `protocol:` sai como
+    `Unspecified`, e isso é AVISADO em voz alta: foi deixando o transporte
+    implícito que a reprodução dos nove nós deu 65% de TCP contra os 99,1% do
+    dataset de referência.
     """
-    return _cabecalho() + _por_servico(matrix, endpoints_de) + _por_no(matrix)
+    indefinidos = [nome for nome, svc in matrix["services"].items()
+                   if transporte_de(svc) == "Unspecified"]
+    if indefinidos:
+        print("  AVISO: transporte indefinido em " + ", ".join(indefinidos))
+        print("         Os eventos sairao com RT_UNKNOWN e o vsomeip escolhe o endpoint.")
+        print("         Declare `protocol: tcp` (ou udp) no servico para fixar.")
+    return _cabecalho() + _por_servico(matrix, endpoints_de, transporte_de) + _por_no(matrix)

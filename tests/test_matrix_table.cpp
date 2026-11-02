@@ -19,6 +19,7 @@
 #include <string>
 
 #include "build/cfg/CommMatrixTable.hpp"
+#include "src/libecu/Types.hpp"
 #include "tests/check.hpp"
 
 namespace tb = ids::matrix::table;
@@ -73,6 +74,40 @@ int main()
         {
             chk::Checa(s.udpPort != 0U, (std::string("  ") + s.name + ": porta UDP nao e zero").c_str());
         }
+    }
+
+    chk::Grupo("o transporte de cada servico esta DECLARADO e e coerente");
+    for (std::size_t i = 0U; i < servicos.count; ++i)
+    {
+        const tb::ServiceDesc &s = servicos.items[i];
+
+        /* Transporte indefinido nao e detalhe: o vsomeip trata RT_UNKNOWN como
+         * "decida por mim", e foi assim que a reproducao dos nove nos deu 65% de
+         * TCP contra os 99,1% do dataset de referencia. Nenhum servico da matriz
+         * pode sair daqui sem transporte declarado. */
+        chk::Checa(s.transport != ids::ecu::Transport::Unspecified,
+                   (std::string("servico ") + s.name + " declara o transporte").c_str());
+
+        /* E o transporte declarado precisa ter endpoint que o sustente: pedir
+         * TCP a um servico que so anuncia UDP e oferta que nao chega a ninguem. */
+        bool sustentado = true;
+        if (s.transport == ids::ecu::Transport::Reliable)
+        {
+            sustentado = s.hasTcp;
+        }
+        else if (s.transport == ids::ecu::Transport::Unreliable)
+        {
+            sustentado = s.hasUdp;
+        }
+        else if (s.transport == ids::ecu::Transport::Both)
+        {
+            sustentado = s.hasTcp && s.hasUdp;
+        }
+        else
+        {
+            /* Unspecified, ja reprovado acima. */
+        }
+        chk::Checa(sustentado, (std::string("  ") + s.name + ": ha endpoint para o transporte declarado").c_str());
     }
 
     chk::Grupo("eventos e eventgroups, e a ligacao entre eles");

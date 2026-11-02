@@ -168,6 +168,33 @@ std::vector<Provided> ReclamaNaoOferecidos(std::vector<Provided> &provided, bool
 }
 
 /**
+ * @brief Translate the transport of the matrix into what vsomeip calls reliability.
+ * @param[in] transport Endpoint the events travel on.
+ * @return The matching vsomeip value.
+ */
+vsomeip::reliability_type_e ComoReliability(Transport transport)
+{
+    vsomeip::reliability_type_e r = vsomeip::reliability_type_e::RT_UNKNOWN;
+    switch (transport)
+    {
+        case Transport::Reliable:
+            r = vsomeip::reliability_type_e::RT_RELIABLE;
+            break;
+        case Transport::Unreliable:
+            r = vsomeip::reliability_type_e::RT_UNRELIABLE;
+            break;
+        case Transport::Both:
+            r = vsomeip::reliability_type_e::RT_BOTH;
+            break;
+        case Transport::Unspecified:
+        default:
+            /* RT_UNKNOWN: the stack decides, which is what produced the 65/35 split. */
+            break;
+    }
+    return r;
+}
+
+/**
  * @brief Turn a list of eventgroup identifiers into the set vsomeip asks for.
  * @param[in] eventgroups Identifiers to convert.
  * @return The same identifiers as a vsomeip set.
@@ -307,7 +334,7 @@ ara::core::Result<void> NodeRuntime::ProvideService(ServiceId service, InstanceI
 }
 
 ara::core::Result<void> NodeRuntime::ProvideEvent(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups,
-                                                  bool isField, std::chrono::milliseconds cycle)
+                                                  bool isField, std::chrono::milliseconds cycle, Transport transport)
 {
     using Res = ara::core::Result<void>;
 
@@ -342,8 +369,11 @@ ara::core::Result<void> NodeRuntime::ProvideEvent(ServiceId service, InstanceId 
         }
     }
 
+    /* The three arguments between the cycle and the reliability are the vsomeip defaults, spelled
+     * out because the reliability comes after them and C++ has no named arguments. */
     const vsomeip::event_type_e kind = isField ? vsomeip::event_type_e::ET_FIELD : vsomeip::event_type_e::ET_EVENT;
-    m_impl->app->offer_event(service, instance, static_cast<vsomeip::event_t>(notifier), ComoConjunto(eventgroups), kind, cycle);
+    m_impl->app->offer_event(service, instance, static_cast<vsomeip::event_t>(notifier), ComoConjunto(eventgroups), kind, cycle, false, true,
+                             nullptr, ComoReliability(transport));
     return Res::FromValue();
 }
 
@@ -556,7 +586,8 @@ ara::core::Result<void> NodeRuntime::WaitUntilAvailable(ServiceId service, Insta
     return Res::FromValue();
 }
 
-ara::core::Result<void> NodeRuntime::Subscribe(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups)
+ara::core::Result<void> NodeRuntime::Subscribe(ServiceId service, InstanceId instance, EventId notifier, EventgroupIds eventgroups,
+                                               Transport transport)
 {
     using Res = ara::core::Result<void>;
 
@@ -614,7 +645,16 @@ ara::core::Result<void> NodeRuntime::Subscribe(ServiceId service, InstanceId ins
                                                 static_cast<EventId>(msg->get_method()), view);
                                           });
 
-    m_impl->app->request_event(service, instance, static_cast<vsomeip::event_t>(notifier), groups);
+    /* The consumer states the transport too: request_event with RT_UNKNOWN makes the stack accept
+     * the event on either endpoint, and then which one carries it is whatever the provider chose.
+     *
+     * The type stays ET_EVENT even for a field, which is what ::ids::ecu::Proxy also does. It is a
+     * KNOWN and unmeasured difference: for a field the stack would request the initial value on
+     * subscribing, so a faithful reproduction may owe a few messages per subscription. It is not
+     * what the transport finding was about, and claiming it is right without having measured it
+     * would be the same mistake again. */
+    m_impl->app->request_event(service, instance, static_cast<vsomeip::event_t>(notifier), groups,
+                               vsomeip::event_type_e::ET_EVENT, ComoReliability(transport));
     for (std::set<vsomeip::eventgroup_t>::const_iterator it = groups.begin(); it != groups.end(); ++it)
     {
         m_impl->app->subscribe(service, instance, *it);

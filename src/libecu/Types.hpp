@@ -48,6 +48,24 @@ using EventgroupId   = std::uint16_t; ///< SOME/IP eventgroup identifier.
 using ApplicationId  = std::uint16_t; ///< vsomeip application identifier of a node.
 using Port           = std::uint16_t; ///< Transport port a service is offered on.
 
+/**
+ * @brief Which endpoint an event travels on.
+ * @details This is NOT a detail that may be left implicit, and the bench has the measurement to
+ *          prove it. A service of the recovered matrix announces TWO endpoints, one reliable and one
+ *          unreliable, and vsomeip takes @c RT_UNKNOWN as "decide for me". Offering the events of
+ *          the nine reproduced nodes that way gave **65% TCP** over the capture, where the reference
+ *          dataset is **99,1% TCP**. The split was not a coincidence of load: it is what happens
+ *          when nobody states the transport. So ::ids::ecu::NodeRuntime asks for it outright, with
+ *          no default argument.
+ */
+enum class Transport : std::uint8_t
+{
+    Unspecified = 0U, ///< Let the stack decide. Reproduces nothing in particular; see above.
+    Reliable    = 1U, ///< TCP.
+    Unreliable  = 2U, ///< UDP.
+    Both        = 3U  ///< Offer on either endpoint.
+};
+
 using ByteView     = ara::core::Span<const std::uint8_t>; ///< Non-owning view over payload bytes.
 using EventgroupIds = ara::core::Span<const EventgroupId>; ///< Non-owning view over a list of eventgroups.
 

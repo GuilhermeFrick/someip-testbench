@@ -61,6 +61,7 @@ struct EventPlan
     std::size_t                               bytes    = 0U;    ///< Payload size recovered from the capture.
     std::uint32_t                             cycleMs  = 0U;    ///< Cadence recovered from the capture.
     std::vector<::ids::ecu::EventgroupId>     eventgroups;      ///< Every group that announces it; never empty in a usable plan.
+    ::ids::ecu::Transport                     transport = ::ids::ecu::Transport::Unspecified; ///< Endpoint it travels on.
     std::string                               serviceName;      ///< Service name, for the log lines.
 };
 
@@ -72,6 +73,7 @@ struct ConsumePlan
     ::ids::ecu::ServiceId                                                     service  = 0U; ///< Service to look for.
     ::ids::ecu::InstanceId                                                    instance = 0U; ///< Instance of it.
     std::map<::ids::ecu::EventId, std::vector<::ids::ecu::EventgroupId>>      subscriptions; ///< Event to the groups to subscribe it in.
+    ::ids::ecu::Transport    transport = ::ids::ecu::Transport::Unspecified; ///< Endpoint the notifications are expected on.
     std::string                                                               serviceName;   ///< Service name, for the log lines.
 };
 
@@ -223,6 +225,7 @@ inline NodePlan PlanFor(const char *nodeName)
             ep.bytes       = ev.payloadBytes;
             ep.cycleMs     = ev.cycleMs;
             ep.eventgroups = GroupsCarrying(svcNome, ev.id);
+            ep.transport   = svc->transport;
             ep.serviceName = svcNome;
 
             if (ep.eventgroups.empty())
@@ -257,6 +260,7 @@ inline NodePlan PlanFor(const char *nodeName)
         cp.service       = svc->id;
         cp.instance      = svc->instance;
         cp.serviceName   = c.service;
+        cp.transport     = svc->transport;
         cp.subscriptions = SubscriptionsFor(c);
 
         if (cp.subscriptions.empty())

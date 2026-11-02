@@ -64,6 +64,39 @@ confiança: min 0,51   mediana 0,52   max 0,93
 
 ---
 
+### 2.4 Os nove nós no ar, e o transporte que estava implícito
+
+Um binário só, `generic_ecu`, dirigido pela tabela de runtime da matriz. Subido nove vezes
+a partir da `comm_matrix_kim.yaml`, com captura na interface da bridge — **não** dentro de um
+container, porque a bridge do Docker não entrega a um terceiro o unicast entre dois outros, e
+99% do dataset é TCP unicast.
+
+**Primeira rodada, 60 s:** 165 103 quadros, **65% TCP**, 108 843 notificações recebidas.
+O dataset de referência tem **99,1% TCP**. Trinta e quatro pontos de diferença.
+
+A causa não era carga: cada serviço da matriz recuperada anuncia **dois** endpoints, um TCP
+e um UDP, e o `offer_event` do vsomeip tem um parâmetro de *reliability* cujo padrão é
+`RT_UNKNOWN` — isto é, "decida por mim". Deixado implícito, o stack entregava **cada
+notificação duas vezes**, uma por endpoint.
+
+**Segunda rodada, com `protocol:` da matriz levado até o `offer_event`:**
+
+| | 1ª rodada (implícito) | 2ª rodada (declarado) | dataset |
+|---|---:|---:|---:|
+| quadros | 165 103 | 110 696 | — |
+| TCP | 65% | **98%** | **99,1%** |
+| UDP fora do SD | 54 449 | **27** | — |
+| notificações recebidas | 108 843 | 54 363 | — |
+
+As notificações caíram **exactamente pela metade**: era duplicação, não volume. As cadências
+publicadas batem com as recuperadas (5 ms → 1606 em 8 s; 10 ms → 803; 15 ms → 536;
+25 ms → 322).
+
+Isto **corrige uma afirmação anterior minha** de que a `libecu` não precisava de mudança para
+TCP porque "o transporte vem da configuração JSON". Vem o *endpoint*; o transporte do evento,
+não. Agora `Transport` é parâmetro **sem valor padrão** no `NodeRuntime`, e o
+`test_matrix_table` reprova uma matriz que deixe o transporte indefinido.
+
 ## 3. As descobertas, por ordem de importância
 
 ### 3.1 🔴 O dataset do Kim é a MESMA arquitetura da nossa bancada
@@ -148,6 +181,9 @@ barramento do Kim reproduzido   → falso positivo esperado ≈ o do próprio da
   + transporte UDP              → mede o efeito do transporte
 ```
 
+O degrau zero **já tem número**: 98% TCP contra 99,1% do dataset (§2.4). O que falta nele é o
+critério que importa — rodar o pipeline congelado sobre esse PCAP e comparar o falso positivo.
+
 É a mesma lógica que validou o gerador na Fase 0, quando os identificadores da nossa
 matriz coincidiam de propósito com os dos exemplos do vsomeip.
 
@@ -222,8 +258,12 @@ diferentes.
 
 ## 7. Próximos passos
 
-1. **Gerar a bancada a partir da `comm_matrix_kim.yaml`** — exige estender o
-   `gen_config.py` e a `libecu` para **TCP** e para múltiplos endpoints.
+1. ~~**Gerar a bancada a partir da `comm_matrix_kim.yaml`**~~ — ✅ **feito**, ver §2.4. Os nove
+   nós sobem com `bash platform/bus-kim/run.sh` e o tráfego sai a 98% TCP.
+   Ressalva de endereçamento: a sub-rede `172.18.0.0/24` da matriz é a que o Docker entrega ao
+   segundo projeto de qualquer máquina, então a rodada usa `SUBNET=` e o
+   `tools/remap_subnet.py` escreve uma matriz derivada preservando o **último octeto** de cada
+   nó. Endereço é chave de fluxo, não feature; o desvio é de endereçamento, não de comportamento.
 2. **Rodar o pipeline congelado sobre o tráfego reproduzido.** É o teste que valida a
    bancada: se o falso positivo cair ao nível do dataset, a escada da §4.1 fica em pé.
 3. **Reproduzir o macro-F1 (0,9689)** com a cadeia em C++ sobre o dataset, fechando a
