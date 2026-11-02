@@ -135,10 +135,22 @@ python3 tools/emit_vcdl.py --matrix platform/comm_matrix_kim.yaml --out build/cf
 
 A matriz recuperada de 9 nós dá 353 linhas; a da bancada, 126.
 
-## ✅ VALIDADO contra o parser do CANoe 20 (SP2)
+## 🔴 Analisado pelo CANoe 20 — mas NÃO simula
 
-A saída do emissor foi carregada num CANoe real e o parser a aceita. O caminho até
-lá rendeu três correções, e a primeira é a que explica as outras duas.
+A saída do emissor foi submetida a um CANoe 20 (SP2) real. O parser **aceita** a
+sintaxe — depois de três correções — mas a ferramenta **se recusa a simular**:
+
+> `Error: The Communication Objects used in this configuration are deprecated and have therefore been disabled.`
+> `[error] System  Measurement start aborted!`
+
+⚠️ **Correção de um registro anterior desta página.** Uma versão anterior dizia
+que o arquivo "carrega". Era cedo demais: aquele "sem erros" vinha da **primeira
+tela** do diálogo *Load Data Source*, e o diálogo **só valida de verdade depois do
+`Finish`**. Depois do Finish o erro do `[fixlayout=true]` reaparecia e bloqueava a
+carga. Removido o atributo, a carga passa — e aí esbarra na recusa de simular.
+
+Ou seja: **a versão 1.4 é a única que o manual da Vector documenta para SOME/IP, é
+a única que o parser aceita, e é a que o CANoe 20 desabilitou.**
 
 ### 🔴 A sintaxe do manual é vCDL **1.4**, não 2.0
 
@@ -201,11 +213,31 @@ no fio com e sem o atributo.
 * ele às vezes abre **invisível**; `Alt+Space` o traz à frente, `Esc` fecha;
 * atalhos de `Ctrl` **não chegam** à sessão: `Ctrl+X` digita um "x".
 
+## O alvo real: vCDL 2.0
+
+Para **rodar**, o arquivo precisa ser 2.0. O que já se sabe sobre a tradução, tudo
+vindo de evidência colhida e não de suposição:
+
+| em 1.4 | em 2.0 | de onde vem |
+|---|---|---|
+| `fixlayout`, `serviceId`, `eventId`, `offerTTL`… | maiúscula inicial: `FixLayout`, `ServiceId`… | `[IMP1001] Remember all predefined attributes in vCDL 2.0 start with an uppercase letter` |
+| `binding SOMEIP;` | atributo `[Binding="SOMEIP"]` | o exemplo `ADASSystem_Setup.vcdl` usa `[Binding="ADAS"]` |
+| `ipstack`, `ipnep`, … soltos | provavelmente **qualificados** `_SOMEIP::…`, ou puxados por `using _SOMEIP;` | o mesmo exemplo usa `_ADAS::DataModel::ISensor`; e a ajuda diz que *"Using directives can be used to specify a namespace whose artifacts are pulled into this namespace"* |
+
+Isso explica o `[VL1001] Artifact or subelement 'ipstack' not found` que apareceu
+com `version 2.0`: em 2.0 os artefatos do módulo **não estão no escopo global**.
+
+🔴 **É hipótese, não resultado.** O `using _SOMEIP;` nunca foi testado.
+
+**A alternativa** é ARXML, que é o que o próprio exemplo `SOMEIPBasicAsrAdaptive`
+usa e o CANoe 20 simula sem reclamar. Seria outro emissor, e o formato é bem mais
+verboso — mas é o caminho conhecidamente funcional.
+
 ## O passo que falta
 
-O arquivo carrega. O que **não** foi feito é **rodar** a simulação a partir dele e
-comparar o PCAP com o da nossa bancada — a sessão de demonstração não deixa arquivo
-sair, então a comparação cruzada continua esperando uma licença.
+Fazer o arquivo **rodar**, o que exige traduzir para vCDL 2.0 (ou emitir ARXML).
+Só depois disso faz sentido falar em comparar PCAP — e aí ainda esbarra em a sessão
+de demonstração não deixar arquivo sair.
 
 E há uma dívida anotada: migrar para **vCDL 2.0**, que renomeia os atributos para
 maiúscula inicial e usa `[Binding="SOMEIP"]` em vez de `binding SOMEIP;`. Não é

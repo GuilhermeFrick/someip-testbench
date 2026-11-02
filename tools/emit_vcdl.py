@@ -316,10 +316,12 @@ def main() -> None:
     linhas.append(" * Mesma matriz que sobe os nos em vsomeip, no formato do Vector CANoe.")
     linhas.append(" * Um barramento, duas implementacoes.")
     linhas.append(" *")
-    linhas.append(" * VALIDADO contra o parser do CANoe 20 (SP2): com `version 1.4` e")
-    linhas.append(" * `import module \"SOMEIP\"` o arquivo carrega. O modulo e o atributo")
-    linhas.append(" * `tcpEndpoint` foram confirmados por experimento de controle, com nome")
-    linhas.append(" * inventado para provar que o parser de fato verifica. Ver docs/VCDL.md. */")
+    linhas.append(" * 🔴 ESTE ARQUIVO E ANALISADO PELO CANoe 20, MAS NAO SIMULA. Ao dar Start:")
+    linhas.append(" *   'The Communication Objects used in this configuration are deprecated")
+    linhas.append(" *    and have therefore been disabled.'")
+    linhas.append(" * A versao 1.4 e a unica que o manual da Vector documenta para SOME/IP, e e")
+    linhas.append(" * a que o parser aceita -- mas o CANoe 20 desabilitou objetos 1.4. Para")
+    linhas.append(" * RODAR, o alvo e vCDL 2.0 ou ARXML. Ver docs/VCDL.md. */")
     # O preambulo, e A ORDEM IMPORTA: `version` tem de ser a primeira linha. Com o
     # import antes dela o CANoe responde "The vCDL file version could not be found".
     #
