@@ -79,8 +79,37 @@ No dataset o sequestro dura 565 dos 1 479 s da captura; fora dele o atacante só
 0,3% TCP), e é isso que leva a proporção da captura inteira a 80,3%/19,7%. A comparação certa é
 dentro da janela.
 
-## O que falta na fase A
+## MITM multi (injetores .14 e .15)
 
-O MITM multi: dois atacantes (.14 assina a VDE e repassa por 0x100B; .15 se passa pela VDE) e o
-`StopOffer` com o IP da VDE forjado, por socket bruto (`INJ_SO_MODE=raw`), que o emissor já suporta
-e o teste já confere contra o quadro do dataset.
+Dois injetores, na ordem do dataset: o .14 (`mitm_relay`) sobe antes da VDE, assina a VDE como
+cliente comum e repassa o último valor recebido pelo serviço 0x100B (instância 0x000B, TCP 30601,
+UDP 31697) a cada ~9 ms; o .15 (`mitm_impostor`) sobe ~3,4 s depois da VDE, oferece 0x1001 no ritmo
+normal, assina o repasse e, **para cada notificação repassada que recebe**, manda à ADAS um
+`StopOffer` com o IP da VDE forjado, por socket bruto.
+
+```sh
+SCENARIO=mitm_multi bash platform/scenario-live/run.sh
+```
+
+| | dataset (`mitm_multi_attacker`) | bancada |
+|---|---|---|
+| TCP / UDP (regra por IP do dataset) | 98,2% / 1,8% | 97,8% / 2,2% |
+| quadros do .14 / do .15 | 61,1% / 38,9% | 60,8% / 39,0% |
+| .14 assina a VDE; .15 assina o 0x100B no .14 | sim | sim |
+| .14 também tenta assinar 0x1001 no .15 (efeito da oferta falsa) | sim | sim |
+| SYN da ADAS para o .15 / para a VDE | 426 / 427 | 32 / 30 |
+| SYN de CLU, PT, TEL e .14 para a VDE | 431 cada | 33 cada |
+| `StopOffer` forjados / notificações repassadas | 163 188 / 163 190 | 6 663 / 6 663 |
+| ritmo do repasse .14 → .15 | 110/s | 117/s |
+| VDE → .14 | 60/s | 64/s |
+| intervalo entre `StopOffer` forjados | 7,7 ms | 8,9 ms |
+| quem envia o `StopOffer` forjado | MAC do .15 com IP .10 | MAC do .15 com IP .10 |
+
+Os `StopOffer` forjados saem com o IP da VDE, e a regra de rótulo por IP do dataset os marca como
+tráfego normal. Na bancada o rótulo é o MAC: `out-*/injector.mac` lista o MAC de cada injetor.
+
+## Fase A completa
+
+As quatro famílias rodam ao vivo no barramento e passaram no critério de aceite. Depois da
+reorganização para dois injetores, DoS, MITM single e Fuzzy foram rodados de novo (40 s): 59,2%/40,8%,
+68,7%/31,3% e 100% UDP, e a suíte inteira passou na imagem 3.5.6.

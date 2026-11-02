@@ -106,7 +106,12 @@ igual ao dataset). Revalidados na 3.5.6: `sd-smoke`, `bus-kim` e a suíte inteir
 do atacante do dataset reproduzido em ordem. Durante o sequestro, 69,0%/31,0% de UDP/TCP contra
 70,2%/29,8% do dataset; ADAS sequestrada, CLU/PT/TEL recusadas e quase sem dados da VDE, como no PCAP.
 
-**A4 (MITM multi):** falta. Dois atacantes e `StopOffer` com IP forjado por socket bruto.
+**A4 (MITM multi): passou (02/11).** Dois injetores (.14 repassa a VDE por 0x100B; .15 se passa pela
+VDE e manda à ADAS um `StopOffer` com o IP da VDE forjado para cada repasse recebido). 97,8%/2,2% de
+TCP/UDP contra 98,2%/1,8%; 60,8%/39,0% dos quadros do .14/.15 contra 61,1%/38,9%; um `StopOffer`
+forjado por notificação repassada, como no dataset.
+
+**Fase A concluída:** as quatro famílias rodam ao vivo e reproduzem o dataset.
 
 ## Fase B — Rodada única
 

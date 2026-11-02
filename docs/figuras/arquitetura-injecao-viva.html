@@ -362,7 +362,7 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(-
 </div>
 
 <div class="card" style="margin-top:14px">
-<h3>MITM single <span class="tag atk">atacante .13 · ofertas a cada 10 ms · 270.665 quadros · UDP 80% (todo SD) · TCP 20%</span></h3>
+<h3>MITM single <span class="tag ok">reproduzido ao vivo</span> <span class="tag atk">atacante .13 · ofertas a cada 10 ms · 270.665 quadros · UDP 80% (todo SD) · TCP 20%</span></h3>
 <svg viewBox="0 0 900 400" role="img" aria-label="MITM single: o .13 anuncia 0x1001 se passando pela VDE; a ADAS assina e conecta no .13 e passa a receber dele; CLU, PT e TEL continuam na VDE.">
 <defs>
 <marker id="a3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
@@ -393,7 +393,7 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(-
 </div>
 
 <div class="card" style="margin-top:14px">
-<h3>MITM multi <span class="tag atk">atacantes .14 e .15 · 267.049 quadros · 98% TCP</span></h3>
+<h3>MITM multi <span class="tag ok">reproduzido ao vivo</span> <span class="tag atk">atacantes .14 e .15 · 267.049 quadros · 98% TCP</span></h3>
 <svg viewBox="0 0 900 450" role="img" aria-label="MITM multi: o .14 assina a VDE, repassa os eventos pelo serviço 0x100B ao .15, e o .15 se passa pela VDE para a ADAS.">
 <defs>
 <marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mka"/></marker>
@@ -441,7 +441,7 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(-
 <div class="card scroll">
 <table>
 <tr><th>fase</th><th>entrega</th><th>critério de aceite</th><th>estado</th></tr>
-<tr><td><b>A</b></td><td>ECUs atacantes vivas (vsomeip, IPs do dataset). Antes, testar 3 riscos: serviço oferecido em dobro, payload do atacante, oferta com endpoint da VDE</td><td>a mesma assinatura que o dataset em <code>attack_flows.py</code>: tipos de SD, quem abre o TCP, vítimas, UDP/TCP a até 10 pontos</td><td><span class="tag ok">Fuzzy e DoS ✓</span> <span class="tag atk">MITM a fazer</span></td></tr>
+<tr><td><b>A</b></td><td>ECUs atacantes vivas (vsomeip, IPs do dataset). Antes, testar 3 riscos: serviço oferecido em dobro, payload do atacante, oferta com endpoint da VDE</td><td>a mesma assinatura que o dataset em <code>attack_flows.py</code>: tipos de SD, quem abre o TCP, vítimas, UDP/TCP a até 10 pontos</td><td><span class="tag ok">concluída: as 4 famílias ao vivo</span></td></tr>
 <tr><td><b>B</b></td><td>Rodada única: 9 ECUs + sensor + atacante, com janela de ataque</td><td>ataque no fio, PCAP rotulado por IP, security events dentro da janela</td><td><span class="tag atk">a fazer</span></td></tr>
 <tr><td><b>C</b></td><td>Medição de detecção refeita ao vivo</td><td>novo <code>DETECCAO.md</code>, com recall, falso positivo e atraso até o primeiro evento</td><td><span class="tag atk">a fazer</span></td></tr>
 <tr><td><b>D</b></td><td>Controle pela rede <code>ctrl</code>: ligar, desligar, ajustar</td><td>nenhum quadro de controle na captura; comandos registrados com horário</td><td><span class="tag atk">a fazer</span></td></tr>

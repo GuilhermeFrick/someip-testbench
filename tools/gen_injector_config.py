@@ -32,7 +32,8 @@ import sys
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cfg", required=True, help="diretório gerado por tools/gen_config.py")
-    ap.add_argument("--scenario", required=True, choices=["dos", "mitm_single", "fuzzy"])
+    ap.add_argument("--scenario", required=True,
+                    choices=["dos", "mitm_single", "mitm_relay", "mitm_impostor", "fuzzy"])
     ap.add_argument("--ip", required=True, help="unicast do injetor, fora das 9 ECUs")
     ap.add_argument("--out", required=True)
     ap.add_argument("--impersonate", default="node_10", help="ECU cuja configuração o dos copia")
@@ -58,13 +59,28 @@ def main():
         "service-discovery": copy.deepcopy(base["service-discovery"]),
     }
 
-    if a.scenario in ("dos", "mitm_single"):
+    if a.scenario in ("dos", "mitm_single", "mitm_impostor"):
         if not base.get("services"):
             sys.exit("ERRO: %s não oferece serviço; nada a personificar" % a.impersonate)
         cfg["services"] = copy.deepcopy(base["services"])
-        # Ritmos medidos no dataset (tools/offer_cadence.py): .11 a cada 20 ms, .13 a cada 10 ms.
-        padrao = 20 if a.scenario == "dos" else 10
-        cfg["service-discovery"]["cyclic_offer_delay"] = str(a.cycle_ms if a.cycle_ms is not None else padrao)
+        # Ritmos medidos no dataset (tools/offer_cadence.py): .11 a cada 20 ms, .13 a cada
+        # 10 ms; o .15 do MITM multi anuncia no ritmo normal do barramento.
+        padrao = {"dos": 20, "mitm_single": 10}.get(a.scenario)
+        if a.cycle_ms is not None:
+            cfg["service-discovery"]["cyclic_offer_delay"] = str(a.cycle_ms)
+        elif padrao is not None:
+            cfg["service-discovery"]["cyclic_offer_delay"] = str(padrao)
+    elif a.scenario == "mitm_relay":
+        # O serviço de repasse do .14, como ele o anuncia no dataset: 0x100B, instância
+        # 0x000B, TCP 30601 e UDP 31697, no ritmo normal do SD.
+        cfg["services"] = [{
+            "service": "0x100b",
+            "instance": "0x000b",
+            "unreliable": "31697",
+            "reliable": {"port": "30601", "enable-magic-cookies": "false"},
+        }]
+        if a.cycle_ms is not None:
+            cfg["service-discovery"]["cyclic_offer_delay"] = str(a.cycle_ms)
     else:
         servicos = []
         for svc in range(a.fuzz_first, a.fuzz_first + a.fuzz_count):

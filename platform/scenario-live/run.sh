@@ -40,19 +40,22 @@ WORK="build/scn"
 CFG="$WORK/cfg"
 PREFIXO="$(echo "$SUBNET" | cut -d/ -f1 | cut -d. -f1-3)."
 
+# Injetores de cada cenário, como papel:último-octeto. O MITM multi tem dois, como no
+# dataset: .14 assina a VDE e repassa por 0x100B, .15 se passa pela VDE.
 case "$SCENARIO" in
-    dos)         INJ_OCTETO=11 ;;
-    mitm_single) INJ_OCTETO=13 ;;
-    fuzzy)       INJ_OCTETO=17 ;;
-    *) echo "ERRO: SCENARIO deve ser dos, mitm_single ou fuzzy"; exit 2 ;;
+    dos)         INJETORES="dos:11" ;;
+    mitm_single) INJETORES="mitm_single:13" ;;
+    mitm_multi)  INJETORES="mitm_relay:14 mitm_impostor:15" ;;
+    fuzzy)       INJETORES="fuzzy:17" ;;
+    *) echo "ERRO: SCENARIO deve ser dos, mitm_single, mitm_multi ou fuzzy"; exit 2 ;;
 esac
-INJ_IP="${PREFIXO}${INJ_OCTETO}"
-INJ_MAC="$(echo "$INJ_IP" | awk -F. '{printf "02:42:%02x:%02x:%02x:%02x", $1, $2, $3, $4}')"
+ip_de()  { echo "${PREFIXO}${1##*:}"; }
+mac_de() { echo "$(ip_de "$1")" | awk -F. '{printf "02:42:%02x:%02x:%02x:%02x", $1, $2, $3, $4}'; }
 
 NOMES=""
 limpa() {
     [ -n "$NOMES" ] && docker rm -f $NOMES >/dev/null 2>&1
-    docker rm -f scn-cap scn-injector >/dev/null 2>&1
+    docker rm -f scn-cap $(docker ps -aq --filter name=scn-inj-) >/dev/null 2>&1
     docker network rm "$NET" >/dev/null 2>&1
 }
 limpa
@@ -65,8 +68,13 @@ python3 tools/remap_subnet.py --matrix platform/comm_matrix_kim.yaml --subnet "$
     --out "$WORK/matriz.yaml" >/dev/null || exit 1
 python3 tools/gen_config.py --matrix "$WORK/matriz.yaml" --out "$CFG" >/dev/null || exit 1
 cp "$CFG/CommMatrixTable.hpp" build/cfg/CommMatrixTable.hpp || exit 1
-python3 tools/gen_injector_config.py --cfg "$CFG" --scenario "$SCENARIO" --ip "$INJ_IP" \
-    --out "$CFG/vsomeip-injector.json" || exit 1
+N_APP=0
+for INJ in $INJETORES; do
+    PAPEL="${INJ%%:*}"
+    N_APP=$((N_APP + 1))
+    python3 tools/gen_injector_config.py --cfg "$CFG" --scenario "$PAPEL" --ip "$(ip_de "$INJ")" \
+        --app-id "$((0x1EE0 + N_APP))" --out "$CFG/vsomeip-inj-$PAPEL.json" || exit 1
+done
 
 # O sinal falso do MITM single vem do próprio atacante do dataset, pelo MAC dele.
 DATASET="${DATASET:-$HOME/dataset/data/pcap}"
@@ -129,20 +137,25 @@ sobe_no() {
                exec ./build/bin/generic_ecu" >/dev/null || { echo "ERRO: $NO"; exit 1; }
     marca "sobe $NO ($IP)"
 }
-sobe_injetor() {
-    docker run -d --name scn-injector --network "$NET" --ip "$INJ_IP" --mac-address "$INJ_MAC" \
+sobe_injetor() {  # papel:octeto
+    local PAPEL="${1%%:*}"
+    local IP MAC
+    IP="$(ip_de "$1")"
+    MAC="$(mac_de "$1")"
+    docker run -d --name "scn-inj-$PAPEL" --network "$NET" --ip "$IP" --mac-address "$MAC" \
         --cap-add NET_ADMIN --cap-add NET_RAW \
         -v "$ROOT":/w -w /w "$IMG" \
         sh -c "$ROTA
-               export VSOMEIP_CONFIGURATION=/w/$CFG/vsomeip-injector.json
-               export INJ_SCENARIO=$SCENARIO INJ_REPORT_SECONDS=15 INJ_LOCAL_IP=$INJ_IP
-               exec ./build/bin/injector_ecu" >/dev/null || { echo "ERRO: injetor"; exit 1; }
-    marca "sobe injetor $SCENARIO ($INJ_IP, MAC $INJ_MAC)"
-    echo "[injetor] $SCENARIO em $INJ_IP, MAC $INJ_MAC"
+               export VSOMEIP_CONFIGURATION=/w/$CFG/vsomeip-inj-$PAPEL.json
+               export INJ_SCENARIO=$PAPEL INJ_REPORT_SECONDS=15 INJ_LOCAL_IP=$IP
+               exec ./build/bin/injector_ecu" >/dev/null || { echo "ERRO: injetor $PAPEL"; exit 1; }
+    marca "sobe injetor $PAPEL ($IP, MAC $MAC)"
+    echo "$MAC $PAPEL" >> "$OUT/injector.mac"
+    echo "[injetor] $PAPEL em $IP, MAC $MAC"
 }
 
 if [ "$SCENARIO" = "dos" ]; then
-    sobe_injetor
+    sobe_injetor "dos:11"
     sleep 2
     for n in $CONSUMIDORES; do sobe_no "$n"; done
     sleep 4
@@ -153,31 +166,42 @@ elif [ "$SCENARIO" = "mitm_single" ]; then
     sleep 1
     for n in $CONSUMIDORES; do sobe_no "$n"; done
     sleep 3
-    sobe_injetor
+    sobe_injetor "mitm_single:13"
+elif [ "$SCENARIO" = "mitm_multi" ]; then
+    # No dataset o .14 aparece em 0,0 s, as vítimas procuram entre 0,8 e 2,5 s, a VDE
+    # oferece em 3,9 s e o .15 em 7,3 s.
+    sobe_injetor "mitm_relay:14"
+    sleep 1
+    for n in $CONSUMIDORES; do sobe_no "$n"; done
+    sleep 2
+    for n in $PROVEDORES; do sobe_no "$n"; done
+    sleep 3
+    sobe_injetor "mitm_impostor:15"
 else
     for n in $PROVEDORES; do sobe_no "$n"; done
     sleep 1
     for n in $CONSUMIDORES; do sobe_no "$n"; done
     sleep 10
-    sobe_injetor
+    sobe_injetor "fuzzy:17"
 fi
 echo "[coletando ${DUR}s]"
 sleep "$DUR"
 
 # ---------------------------------------------------------------- 5. encerrar
-docker kill --signal=SIGTERM scn-injector >/dev/null 2>&1
+for INJ in $INJETORES; do docker kill --signal=SIGTERM "scn-inj-${INJ%%:*}" >/dev/null 2>&1; done
 for n in $PROVEDORES $CONSUMIDORES; do docker kill --signal=SIGTERM "ecu-$n" >/dev/null 2>&1; done
 sleep 3
 docker kill --signal=SIGINT scn-cap >/dev/null 2>&1
 sleep 2
-docker logs scn-injector > "$OUT/log-injector.txt" 2>&1
+for INJ in $INJETORES; do docker logs "scn-inj-${INJ%%:*}" > "$OUT/log-inj-${INJ%%:*}.txt" 2>&1; done
 for n in $PROVEDORES $CONSUMIDORES; do docker logs "ecu-$n" > "$OUT/log-$n.txt" 2>&1; done
-echo "$INJ_MAC" > "$OUT/injector.mac"
 
 # ---------------------------------------------------------------- 6. veredito
 echo
-echo "===== injetor ====="
-grep -E "^\[injector\]" "$OUT/log-injector.txt" | tail -4 | sed 's/^/  /'
+echo "===== injetores ====="
+for INJ in $INJETORES; do
+    grep -E "^\[injector\]" "$OUT/log-inj-${INJ%%:*}.txt" | tail -3 | sed "s/^/  ${INJ%%:*}: /"
+done
 echo
 echo "===== o que cada ECU recebeu ====="
 for n in $CONSUMIDORES; do
