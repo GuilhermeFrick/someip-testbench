@@ -33,6 +33,7 @@
 #include "src/ids_sensor/PacketSource.hpp"
 
 #include <pcap/pcap.h>
+#include <poll.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -287,6 +288,7 @@ ara::core::Result<void> PcapSource::StreamStatus() const
 struct LiveSource::Impl
 {
     pcap_t *handle = nullptr; ///< Active capture; owned, closed by the destructor.
+    int     fd     = -1;      ///< Selectable descriptor of the capture, polled with our own timeout.
 
     /**
      * @brief Construct empty, before a capture has been taken over.
@@ -385,6 +387,20 @@ ara::core::Result<std::unique_ptr<LiveSource>> LiveSource::Create(const std::str
         /* No filter, or one that compiled and was installed. */
     }
 
+    /* NÃO BLOQUEANTE, com a espera feita por poll() em Next(). Com o modo imediato ligado,
+     * o libpcap pode ignorar o timeout de leitura, e uma espera interrompida por sinal é
+     * retomada lá dentro: o pcap_next_ex() ficava preso numa interface parada e o laço do
+     * nó nunca via o pedido de parada (o SIGINT não encerrava o ids_sensor_node, achado em
+     * platform/scenario-live). O poll() volta no prazo E quando chega um sinal. */
+    if (pcap_setnonblock(handle, kEnabled, errbuf) != 0)
+    {
+        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::ArtefactUnreadable));
+    }
+    else
+    {
+        impl->fd = pcap_get_selectable_fd(handle);
+    }
+
     return Res::FromValue(std::unique_ptr<LiveSource>(new LiveSource(std::move(impl))));
 }
 
@@ -400,18 +416,40 @@ ara::core::Optional<Frame> LiveSource::Next()
 
     pcap_pkthdr        *header = nullptr;
     const std::uint8_t *bytes  = nullptr;
-    const int           status = pcap_next_ex(m_impl->handle, &header, &bytes);
+    int                 status = pcap_next_ex(m_impl->handle, &header, &bytes);
+    if ((status == 0) && (m_impl->fd >= 0))
+    {
+        /* Nothing buffered: wait for the descriptor, bounded, and try once more. A signal
+         * makes poll() return early, which is exactly when the caller needs control back. */
+        struct pollfd espera;
+        espera.fd      = m_impl->fd;
+        espera.events  = POLLIN;
+        espera.revents = 0;
+        if (::poll(&espera, 1U, kLiveTimeoutMs) > 0)
+        {
+            status = pcap_next_ex(m_impl->handle, &header, &bytes);
+        }
+        else
+        {
+            /* Timed out or interrupted: report nothing for now. */
+        }
+    }
+    else
+    {
+        /* A frame, or a failure. */
+    }
+
     if (status == kFrameDelivered)
     {
         frame = ara::core::Optional<Frame>(MakeFrame(*header, bytes));
     }
     else
     {
-        /* Zero means the timeout elapsed with nothing to show, which is the usual case
-         * on a quiet bus. An empty Optional therefore means "no frame right now" here,
-         * NOT "the stream has ended" as it does for a replay; a live capture has no
-         * end. The caller loops, and the timeout is what gives it the chance to notice
-         * its own shutdown request between frames. */
+        /* Zero means the wait elapsed with nothing to show, which is the usual case on a
+         * quiet bus. An empty Optional therefore means "no frame right now" here, NOT "the
+         * stream has ended" as it does for a replay; a live capture has no end. The caller
+         * loops, and the bounded wait is what gives it the chance to notice its own
+         * shutdown request between frames. */
     }
 
     return frame;

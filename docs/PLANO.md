@@ -121,6 +121,14 @@ forjado por notificação repassada, como no dataset.
 **Critério de aceite:** o ataque sai no fio, o PCAP rotulado por IP é gerado, e os security events do
 sensor aparecem dentro da janela de ataque.
 
+**Resultado (02/11): passou.** `SENSOR=1` (padrão) em `platform/scenario-live` põe o
+`ids_sensor_node` na rodada, escutando na interface da bridge (o equivalente a uma porta espelhada do
+switch: um container comum não vê o TCP entre as outras ECUs). Nos quatro cenários os security
+events saíram dentro da janela de ataque, o primeiro entre 2 e 300 ms depois da entrada do injetor
+(`tools/events_timeline.py`); o PCAP sai rotulado pelo MAC (`tools/label_by_mac.py`). No caminho:
+o sensor não encerrava com SIGINT (o libpcap em modo imediato ignorava o timeout e retomava a espera
+interrompida); a captura ao vivo passou a ser não bloqueante, com `poll()`.
+
 ## Fase C — Medição de detecção, refeita ao vivo
 
 **Objetivo:** recall, precisão e falso positivo por classe sobre as rodadas da Fase B, com o mesmo
@@ -128,6 +136,13 @@ sensor aparecem dentro da janela de ataque.
 
 **Critério de aceite:** um `DETECCAO.md` novo, substituindo o invalidado, com as rodadas
 reproduzíveis por script. Medir também o atraso entre o início do ataque e o primeiro security event.
+
+**Resultado (02/11): passou.** `experiments/eval-pcap/DETECCAO.md`, com controle sobre os PCAPs
+reais pela mesma regra de rótulo. Recall bancada × dataset: DoS 0,620 × 0,635; Fuzzy 0,974 × 1,000;
+MITM single 0,645 × 0,828; MITM multi 0,019 × 0,708. A detecção transfere em três famílias; o que
+não transfere é o benigno (falso positivo de 1,6% a 9,0% contra ~0,01%, efeito do conteúdo) e a
+distinção single × multi. E a regra por IP do dataset rotula como normais os 163 188 `StopOffer`
+forjados do MITM multi: o detector, treinado com ela, classifica todos como normais.
 
 ## Fase D — Controle pela rede `ctrl`
 
