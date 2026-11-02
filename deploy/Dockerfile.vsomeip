@@ -3,7 +3,14 @@
 # Todos os nos ECU herdam desta imagem. Ela e deliberadamente a UNICA que compila
 # o vsomeip: os nos so acrescentam o proprio binario, para que o tempo de build
 # da bancada nao cresca a cada no.
-FROM ubuntu:24.04
+#
+# BASE é parâmetro por causa das versões antigas do vsomeip: a série 3.1 não
+# compila com o Boost do Ubuntu 24.04. A bancada padrão continua sendo 24.04 +
+# 3.6.4; as outras combinações existem para o degrau platform/dup-offer, que
+# procura a versão cujo comportamento reproduz o dataset do Kim (capturado em
+# 2025-08-08, com versão do vsomeip não informada).
+ARG BASE=ubuntu:24.04
+FROM ${BASE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Tag FIXA, nao master: a bancada precisa ser reproduzivel, e esta e a versao

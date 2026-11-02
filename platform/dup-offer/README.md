@@ -39,15 +39,47 @@ Os logs do vsomeip dizem por quê. Na vítima, o endpoint do serviço alterna
 sendo reaberta com a VDE. No clone, cada assinatura chega sem TCP e é recusada
 (`Subscription rejected ... didn't find TCP connection`).
 
+## Versões e ordem de subida (02/11, segunda rodada)
+
+O dataset foi capturado em 2025-08-08 (carimbo do primeiro pacote). Repetido com as versões que
+existiam na época:
+
+| versão | vítimas abrem TCP com o clone (clone entrando depois) |
+|---|---|
+| 3.6.4 | não |
+| 3.5.6 | não (355 reconexões com a VDE por vítima) |
+| 3.1.20.3 | quase nada (5 SYN da ADAS, 2 do CLU) |
+| 3.4.10 | não compila com o GCC do Ubuntu 24.04; não foi preciso |
+
+**A causa não era a versão, era a ordem de subida.** `tools/attack_timeline.py` sobre o PCAP do DoS
+mostra as vítimas procurando o serviço em 0,08 s, o .11 respondendo, e a VDE só oferecendo em
+3,8 s. Com `CLONE_FIRST=1` (clone no ar, vítimas sobem, VDE 4 s depois), **o 3.6.4 reproduz o
+dataset na mesma sequência**: Find → TCP com o clone → Subscribe/Ack; a VDE chega, as vítimas tentam
+assinar nela e recebem `SubNack` (sem TCP); zero SYN para a VDE; CLU e ADAS recebem só do clone.
+
+```sh
+CLONE_FIRST=1 bash platform/dup-offer/run.sh
+```
+
+Nos outros ataques a ordem é outra:
+
+| ataque | atacante sobe | como pega a vítima |
+|---|---|---|
+| DoS (.11) | antes da VDE | ganha a corrida da subida |
+| MITM single (.13) | 3 s depois da VDE | CLU, PT e TEL tentam assinar nele e desistem (o mesmo que a primeira rodada deste degrau); a ADAS cai pelo `StopOffer` em nome da VDE |
+| MITM multi (.14, .15) | .14 antes (assina a VDE), .15 depois | `StopOffer` com IP da VDE forjado, à ADAS |
+| Fuzzy (.17) | 1,2 s | não tem vítima |
+
 ## Leitura
 
 - **O vsomeip 3.6.4 aceita a segunda oferta e as vítimas assinam nela.** O risco 1 da fase A0 não
   bloqueia a construção dos atacantes.
-- **Mas, nesta versão, a oferta falsa derruba a conexão legítima em vez de sequestrá-la.** É um DoS
-  real (a ADAS perde dois terços das notificações), mas não é o mesmo efeito do dataset, em que as
-  vítimas migram para o atacante.
-- A hipótese mais provável é **versão do vsomeip** diferente da usada pelo Kim, que o artigo não
-  informa. O próximo passo é repetir este degrau com versões anteriores.
+- **Quando o atacante entra depois da VDE, a oferta falsa derruba a conexão legítima em vez de
+  sequestrá-la.** É um DoS real (a ADAS perde dois terços das notificações), e é o que acontece com
+  CLU, PT e TEL no MITM single do dataset. Quando ele já está no ar antes da VDE, as vítimas migram
+  para ele, como no DoS do dataset.
+- ~~A hipótese mais provável é versão do vsomeip~~: refutada pela segunda rodada. A diferença era a
+  ordem de subida; o 3.6.4 reproduz o sequestro quando o atacante está no ar antes da VDE.
 - **O `StopOffer` em nome da VDE** (o que faz só a ADAS cair nos dois MITM) não sai da API do
   vsomeip: o atacante vivo precisa de um emissor de SD bruto, com IP forjado no MITM multi.
 - **Na bancada, o rótulo deve ser pelo MAC do container atacante**, não pelo IP de origem, para

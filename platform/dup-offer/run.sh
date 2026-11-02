@@ -32,6 +32,11 @@ SUBNET="${SUBNET:-172.28.0.0/24}"
 DUR="${DUR:-60}"
 CLONE_AT="${CLONE_AT:-15}"
 CLONE_CYCLE_MS="${CLONE_CYCLE_MS:-20}"
+# CLONE_FIRST=1 sobe o clone ANTES da VDE, como no dataset: no PCAP do DoS as
+# vítimas mandam FindService em 0,08 s, quem responde é o atacante, e a VDE só
+# oferece em 3,8 s (tools/attack_timeline.py). Com o clone entrando depois, as
+# vítimas ficam presas à VDE em qualquer versão testada (3.1.20.3, 3.5.6, 3.6.4).
+CLONE_FIRST="${CLONE_FIRST:-0}"
 OUT="${OUT:-$HERE/out}"
 WORK="build/dup"
 CFG="$WORK/cfg"
@@ -105,14 +110,25 @@ sobe() {  # nome  último-octeto  ECU_NODE  config
                exec ./build/bin/generic_ecu" >/dev/null || { echo "ERRO: $1"; exit 1; }
     echo "[nó] $1 em ${PREFIXO}$2"
 }
-sobe node_10 10 node_10 vsomeip-node_10.json
-sleep 2
-sobe node_2 2 node_2 vsomeip-node_2.json
-sobe node_3 3 node_3 vsomeip-node_3.json
-echo "[espera] ${CLONE_AT}s para as vítimas assinarem a VDE verdadeira"
-sleep "$CLONE_AT"
-sobe clone 11 node_10 vsomeip-clone.json
-RESTO=$((DUR - CLONE_AT))
+if [ "$CLONE_FIRST" = "1" ]; then
+    # Ordem do dataset: atacante no ar, vítimas sobem, VDE chega ~4 s depois.
+    sobe clone 11 node_10 vsomeip-clone.json
+    sleep 2
+    sobe node_2 2 node_2 vsomeip-node_2.json
+    sobe node_3 3 node_3 vsomeip-node_3.json
+    sleep 4
+    sobe node_10 10 node_10 vsomeip-node_10.json
+    RESTO=$((DUR - 6))
+else
+    sobe node_10 10 node_10 vsomeip-node_10.json
+    sleep 2
+    sobe node_2 2 node_2 vsomeip-node_2.json
+    sobe node_3 3 node_3 vsomeip-node_3.json
+    echo "[espera] ${CLONE_AT}s para as vítimas assinarem a VDE verdadeira"
+    sleep "$CLONE_AT"
+    sobe clone 11 node_10 vsomeip-clone.json
+    RESTO=$((DUR - CLONE_AT))
+fi
 echo "[coletando] mais ${RESTO}s com as duas ofertas no ar"
 sleep "$RESTO"
 

@@ -67,15 +67,26 @@ GPS; PT não recebe IMU). Vale o PCAP.
 
 **Resultado da A0 (02/11, `platform/dup-offer`):**
 
-- risco 1: o vsomeip 3.6.4 **aceita** a segunda oferta e as vítimas assinam nela. Mas, nesta versão,
-  a vítima mantém o TCP com a VDE e a oferta falsa a cada 20 ms só **derruba a conexão legítima**
-  (2 059 vezes em 45 s; a ADAS perde dois terços das notificações). No dataset as vítimas migram para
-  o atacante. Próximo: repetir com versões anteriores do vsomeip;
+- risco 1: **resolvido com o vsomeip 3.6.4.** Com o atacante entrando depois da VDE, as vítimas
+  assinam nele mas mantêm o TCP com a VDE (a oferta a cada 20 ms só derruba a conexão legítima,
+  2 059 vezes em 45 s). Isso é o que acontece com CLU, PT e TEL no MITM single do dataset. Com o
+  atacante no ar **antes** da VDE, como no DoS do dataset, as vítimas migram para ele na mesma
+  sequência do PCAP. 3.5.6 e 3.1.20.3 não mudam o quadro; a causa era a ordem de subida;
 - risco 3: o passo é um `StopOffer` em nome da VDE (do IP do atacante no MITM single, com IP forjado
   no MITM multi). Não sai da API do vsomeip: o atacante precisa de um **emissor de SD bruto**;
-- risco 2 (payload do atacante): ainda não medido.
+- risco 2 (payload do atacante, `tools/attacker_payload.py`, comparando pelo MAC): o atacante **não copia**
+  a VDE ao publicar para as vítimas. DoS: um único payload constante de 24 B no evento 0x0001 (51 950
+  mensagens). MITM single: valores próprios plausíveis, 10 933 distintos, nenhum igual aos da VDE.
+  MITM multi: o .15 manda à ADAS um payload constante; o relay 0x100B (.14 → .15) é **cópia exata** da
+  VDE (100% idênticos). No PCAP do DoS a VDE não publica nada no trecho analisado: as vítimas migraram.
 
 **A1–A4.** Fuzzy, DoS, MITM single e MITM multi, nessa ordem (do que só envia ao que encadeia).
+
+**Consequência para os cenários:** cada ataque tem um modo de entrada, e a rodada precisa respeitá-lo.
+DoS: atacante no ar antes da VDE. MITM single: atacante depois da VDE, mais `StopOffer` em nome dela.
+MITM multi: .14 antes, .15 depois, `StopOffer` com IP forjado. Fuzzy: a qualquer momento. Um ataque
+que entra no meio da rodada e não manda `StopOffer` produz outro efeito (conexão legítima derrubada),
+que também é real e pode ser um cenário à parte.
 
 **Critério de aceite, por ataque:** `tools/attack_flows.py` sobre a captura da bancada produz a mesma
 assinatura que sobre o PCAP do dataset: mesmos tipos de entrada SD, mesmo lado abrindo o TCP, mesmas
