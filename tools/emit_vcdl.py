@@ -311,6 +311,14 @@ def main() -> None:
     linhas.append(" * ⚠️ AINDA NAO CARREGADO NUM CANoe REAL. A gramatica foi lida do manual da")
     linhas.append(" * Vector (docs/referencias/), nao adivinhada, mas a saida nao foi validada.")
     linhas.append(" * O atributo de endpoint TCP em particular e inferencia. Ver docs/VCDL.md. */")
+    # O preambulo. A ajuda do CANoe da a sintaxe exata:
+    #     import-stmt: import module? string-literal ;
+    # e diz que "Both vCDL files and modules, a.k.a. bindings, can be imported".
+    # Sem ele, `ipstack`, `ipnep`, `ipaep`, `provider`, `consumer` e `participant`
+    # nao resolvem -- foi o que o parser do CANoe acusou.
+    # ⚠️ O NOME DO MODULO ainda nao foi confirmado: "SOMEIP" e a aposta obvia,
+    # porque e o nome que a propria linguagem usa em `binding SOMEIP`.
+    linhas.append('import module "SOMEIP";')
     linhas.append("version %s;" % VERSAO_VCDL)
     linhas.append("")
     linhas += bloco_global(matrix["network"])

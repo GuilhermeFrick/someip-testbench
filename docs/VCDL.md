@@ -183,6 +183,46 @@ dúvida de arquitetura — o mapeamento campo a campo acima continua valendo, e 
 confirmado pelo próprio parser ao reclamar de *posição* e de *artefato ausente*,
 nunca do significado dos identificadores.
 
+### 🟢 O MECANISMO FOI ENCONTRADO
+
+A ajuda do CANoe (`vCDL 2.0 → Basic Concepts`) dá a sintaxe exata:
+
+```
+import-stmt:  import module? string-literal ;
+```
+
+E diz o que isso significa:
+
+> *"Both vCDL files and modules, **a.k.a. bindings**, can be imported."*
+> *"Paths to imported files are always relative to the vCDL file that contains the import statement."*
+
+São duas formas — `import "OutroArquivo.vcdl";` e **`import module "MQTT";`**. A
+segunda é a que traz um *binding*, e é a que falta no nosso arquivo. O emissor
+passou a escrever:
+
+```
+import module "SOMEIP";
+```
+
+⚠️ **O nome do módulo ainda não foi confirmado.** `"SOMEIP"` é a aposta óbvia,
+porque é o nome que a própria linguagem usa em `binding SOMEIP`. Confirmar é um
+teste de um minuto para quem tiver uma sessão aberta: adicionar a linha, recarregar
+e ver se `ipstack` passa a resolver.
+
+### O que foi descartado nesta busca, para não repetir
+
+* **A barra do Communication Setup não exporta vCDL.** Os ícones são *Add
+  Application Model*, *Load VTT Manifest* e *Validate*.
+* **O Help não indexa `ipstack` no sentido do vCDL** — 15 resultados, todos de
+  objetos COM.
+* **O exemplo `SOMEIP Basic Franca` usa Franca, não vCDL** — a descrição dele diz
+  *"Shows a simple simulation with Franca as database format"*.
+* **O link do exemplo no manual está morto**
+  (`portal.vector.com/shared/068f1303-…` devolve 404 **mesmo autenticado**).
+* A seção vCDL 2.0 da ajuda online encadeia os tópicos por *next/previous*; o
+  caminho é `vCDLStartpage → vCDLComparison → vCDLConcept → Language/vCDLAttributes
+  → …` e ainda há páginas não lidas depois de `vCDLAttributes`.
+
 ### Como obter o preâmbulo
 
 A sessão de demonstração tem outros exemplos que **usam vCDL** em vez de ARXML —
