@@ -321,7 +321,9 @@ def main() -> None:
     linhas.append(" *    and have therefore been disabled.'")
     linhas.append(" * A versao 1.4 e a unica que o manual da Vector documenta para SOME/IP, e e")
     linhas.append(" * a que o parser aceita -- mas o CANoe 20 desabilitou objetos 1.4. Para")
-    linhas.append(" * RODAR, o alvo e vCDL 2.0 ou ARXML. Ver docs/VCDL.md. */")
+    linhas.append(" * RODAR no CANoe 20 so com ARXML: o vCDL 2.0 foi testado e NAO TEM o")
+    linhas.append(" * vocabulario de SOME/IP -- ele modela objetos distribuidos, nao servicos.")
+    linhas.append(" * Ver docs/VCDL.md. */")
     # O preambulo, e A ORDEM IMPORTA: `version` tem de ser a primeira linha. Com o
     # import antes dela o CANoe responde "The vCDL file version could not be found".
     #

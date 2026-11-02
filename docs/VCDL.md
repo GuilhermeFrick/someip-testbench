@@ -213,31 +213,70 @@ no fio com e sem o atributo.
 * ele às vezes abre **invisível**; `Alt+Space` o traz à frente, `Esc` fecha;
 * atalhos de `Ctrl` **não chegam** à sessão: `Ctrl+X` digita um "x".
 
-## O alvo real: vCDL 2.0
+## 🔴 O vCDL 2.0 também não serve — e por um motivo estrutural
 
-Para **rodar**, o arquivo precisa ser 2.0. O que já se sabe sobre a tradução, tudo
-vindo de evidência colhida e não de suposição:
+A hipótese do `using` foi testada degrau a degrau e **refutada**.
 
-| em 1.4 | em 2.0 | de onde vem |
-|---|---|---|
-| `fixlayout`, `serviceId`, `eventId`, `offerTTL`… | maiúscula inicial: `FixLayout`, `ServiceId`… | `[IMP1001] Remember all predefined attributes in vCDL 2.0 start with an uppercase letter` |
-| `binding SOMEIP;` | atributo `[Binding="SOMEIP"]` | o exemplo `ADASSystem_Setup.vcdl` usa `[Binding="ADAS"]` |
-| `ipstack`, `ipnep`, … soltos | provavelmente **qualificados** `_SOMEIP::…`, ou puxados por `using _SOMEIP;` | o mesmo exemplo usa `_ADAS::DataModel::ISensor`; e a ajuda diz que *"Using directives can be used to specify a namespace whose artifacts are pulled into this namespace"* |
+**O que passou:** `using _SOMEIP;` não gera erro algum — o namespace do módulo
+existe. E dois atributos com maiúscula inicial foram aceitos: `[FixLayout=true]`
+e `[Binding="SOMEIP"]`, confirmando a regra do `[IMP1001]`.
 
-Isso explica o `[VL1001] Artifact or subelement 'ipstack' not found` que apareceu
-com `version 2.0`: em 2.0 os artefatos do módulo **não estão no escopo global**.
+**O que não existe em 2.0**, nem no escopo global, nem via `using`, nem com
+qualificação `_SOMEIP::`:
 
-🔴 **É hipótese, não resultado.** O `using _SOMEIP;` nunca foi testado.
+> `ipstack` · `ipnep` · `ipaep` · `service` · `refine` · `eventgroup` ·
+> `provider` · `consumer` · `participant` · `ServiceId` · `EventId`
 
-**A alternativa** é ARXML, que é o que o próprio exemplo `SOMEIPBasicAsrAdaptive`
-usa e o CANoe 20 simula sem reclamar. Seria outro emissor, e o formato é bem mais
-verboso — mas é o caminho conhecidamente funcional.
+Com a qualificação explícita o erro apenas muda de forma, o que fecha a questão:
+
+> `(L16,C1) [VL1001] Artifact or subelement '_SOMEIP::ipstack' not found`
+
+### A razão: 2.0 é um modelo de *objetos distribuídos*, não de serviços SOME/IP
+
+Três mensagens apontam para a mesma coisa:
+
+> `(L10,C1) [VL0001] Parser error, expected one of the following elements: "using", interface member, closing braces`
+> `(L10,C7) [VL1014] Expecting one of the following object types: IDOType`
+> `(L16,C18) [VL1030] This type of refinement can only be used on DO containers`
+
+Em 2.0, **`event` não é membro de interface**. O exemplo `ADASSystem_Setup.vcdl`
+declara membros como `provided data int32 …`. Ou seja: o vCDL 2.0 modela
+*Distributed Objects*; o vocabulário orientado a serviço de SOME/IP
+(`service`/`event`/`field`/`eventgroup`/`provider`/`consumer`) pertence ao **1.4**.
+
+### O impasse, em uma frase
+
+**A única sintaxe de vCDL que descreve SOME/IP é a 1.4, e o CANoe 20 se recusa a
+simulá-la.** A 2.0 simula, mas não tem com o que descrever um barramento SOME/IP.
+
+### O que sobra: ARXML
+
+É o que o exemplo `SOMEIPBasicAsrAdaptive` usa, e o CANoe 20 simula sem reclamar.
+Seria outro emissor. ⚠️ **E não dá para validá-lo nesta sessão**: a demonstração
+bloqueia transferência de arquivo, e um ARXML de um único serviço tem centenas de
+linhas de XML — não é digitável. Escrever esse emissor seria trabalho não
+verificável, que é exatamente o que este documento evitou até aqui.
+
+### O que isto vale para o artigo
+
+Vale como observação de primeira mão, e reforça o argumento da contribuição:
+
+> a sintaxe de descrição de SOME/IP que o próprio fabricante documenta no manual
+> está marcada como *deprecated* e é recusada pela versão corrente da ferramenta;
+> o caminho que funciona exige outro formato.
+
+É um exemplo concreto, e não retórico, de por que cadeias proprietárias limitam a
+reprodutibilidade.
 
 ## O passo que falta
 
-Fazer o arquivo **rodar**, o que exige traduzir para vCDL 2.0 (ou emitir ARXML).
-Só depois disso faz sentido falar em comparar PCAP — e aí ainda esbarra em a sessão
-de demonstração não deixar arquivo sair.
+Nada, por ora — a investigação do vCDL está **encerrada**, com resposta. O emissor
+fica como está: emite a sintaxe que a Vector documenta para SOME/IP, que um CANoe
+anterior ao 20 simularia, e que serve de mapeamento demonstrável entre a nossa
+matriz e o formato da ferramenta de referência.
+
+Retomar só faz sentido com **licença real** (para emitir e validar ARXML) ou com
+**uma versão mais antiga do CANoe**.
 
 E há uma dívida anotada: migrar para **vCDL 2.0**, que renomeia os atributos para
 maiúscula inicial e usa `[Binding="SOMEIP"]` em vez de `binding SOMEIP;`. Não é
