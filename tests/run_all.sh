@@ -159,6 +159,16 @@ printf '
 ARGS=()
 roda test_payload_bank tests/test_payload_bank.cpp src/ids_sensor/PacketSource.cpp src/ids_sensor/IdsSensorErrorDomain.cpp -lpcap
 
+# -------------------------------------------- o quadro SD montado à mão
+# O StopOffer que o injetor manda nos MITM não sai da API do vsomeip. Este
+# conjunto confere o quadro montado contra os dois do dataset, byte a byte,
+# checksums de IPv4 e UDP incluídos.
+printf '
+######## test_sd_raw ########
+'
+ARGS=()
+roda test_sd_raw tests/test_sd_raw.cpp
+
 # -------------------------------------------- o plano do no generico
 # A tabela acima e conferida na ESTRUTURA. Este confere o que o no generico
 # DERIVA dela: quais eventos publicar, e em quais eventgroups assinar. Roda sem

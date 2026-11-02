@@ -8,6 +8,10 @@
 #
 #   dos    injetor no ar ANTES da VDE: as vítimas o encontram primeiro, abrem TCP
 #          com ele, e a VDE só oferece ~4 s depois. IP .11, como no dataset.
+#   mitm_single  barramento sobe normalmente; o injetor entra ~3 s depois da VDE,
+#          anuncia a cada 10 ms e manda à ADAS um StopOffer em nome da VDE a cada
+#          ~2,5 s. Publica o sinal falso do atacante do dataset, extraído do PCAP
+#          (tools/extract_attacker_payloads.py). IP .13.
 #   fuzzy  barramento sobe normalmente; o injetor entra depois. IP .17.
 #
 # O MAC do injetor é FIXADO, porque é o rótulo: o IP de origem pode ser forjado (o
@@ -37,9 +41,10 @@ CFG="$WORK/cfg"
 PREFIXO="$(echo "$SUBNET" | cut -d/ -f1 | cut -d. -f1-3)."
 
 case "$SCENARIO" in
-    dos)   INJ_OCTETO=11 ;;
-    fuzzy) INJ_OCTETO=17 ;;
-    *) echo "ERRO: SCENARIO deve ser dos ou fuzzy"; exit 2 ;;
+    dos)         INJ_OCTETO=11 ;;
+    mitm_single) INJ_OCTETO=13 ;;
+    fuzzy)       INJ_OCTETO=17 ;;
+    *) echo "ERRO: SCENARIO deve ser dos, mitm_single ou fuzzy"; exit 2 ;;
 esac
 INJ_IP="${PREFIXO}${INJ_OCTETO}"
 INJ_MAC="$(echo "$INJ_IP" | awk -F. '{printf "02:42:%02x:%02x:%02x:%02x", $1, $2, $3, $4}')"
@@ -62,6 +67,14 @@ python3 tools/gen_config.py --matrix "$WORK/matriz.yaml" --out "$CFG" >/dev/null
 cp "$CFG/CommMatrixTable.hpp" build/cfg/CommMatrixTable.hpp || exit 1
 python3 tools/gen_injector_config.py --cfg "$CFG" --scenario "$SCENARIO" --ip "$INJ_IP" \
     --out "$CFG/vsomeip-injector.json" || exit 1
+
+# O sinal falso do MITM single vem do próprio atacante do dataset, pelo MAC dele.
+DATASET="${DATASET:-$HOME/dataset/data/pcap}"
+BANCO="build/cfg/attacker-mitm_single.bin"
+if [ "$SCENARIO" = "mitm_single" ] && [ ! -f "$BANCO" ]; then
+    python3 tools/extract_attacker_payloads.py --pcap "$DATASET/mitm_single_attacker.pcap" \
+        --mac 02:42:ac:12:00:0d --service 0x1001 --event 0x0001 --out "$BANCO" || exit 1
+fi
 
 read -r PROVEDORES CONSUMIDORES <<EOF2
 $(python3 - "$WORK/matriz.yaml" <<'PY'
@@ -117,11 +130,12 @@ sobe_no() {
     marca "sobe $NO ($IP)"
 }
 sobe_injetor() {
-    docker run -d --name scn-injector --network "$NET" --ip "$INJ_IP" --mac-address "$INJ_MAC" --cap-add NET_ADMIN \
+    docker run -d --name scn-injector --network "$NET" --ip "$INJ_IP" --mac-address "$INJ_MAC" \
+        --cap-add NET_ADMIN --cap-add NET_RAW \
         -v "$ROOT":/w -w /w "$IMG" \
         sh -c "$ROTA
                export VSOMEIP_CONFIGURATION=/w/$CFG/vsomeip-injector.json
-               export INJ_SCENARIO=$SCENARIO INJ_REPORT_SECONDS=15
+               export INJ_SCENARIO=$SCENARIO INJ_REPORT_SECONDS=15 INJ_LOCAL_IP=$INJ_IP
                exec ./build/bin/injector_ecu" >/dev/null || { echo "ERRO: injetor"; exit 1; }
     marca "sobe injetor $SCENARIO ($INJ_IP, MAC $INJ_MAC)"
     echo "[injetor] $SCENARIO em $INJ_IP, MAC $INJ_MAC"
@@ -133,6 +147,13 @@ if [ "$SCENARIO" = "dos" ]; then
     for n in $CONSUMIDORES; do sobe_no "$n"; done
     sleep 4
     for n in $PROVEDORES; do sobe_no "$n"; done
+elif [ "$SCENARIO" = "mitm_single" ]; then
+    # No dataset a VDE oferece em 3,7 s e o .13 em 6,6 s.
+    for n in $PROVEDORES; do sobe_no "$n"; done
+    sleep 1
+    for n in $CONSUMIDORES; do sobe_no "$n"; done
+    sleep 3
+    sobe_injetor
 else
     for n in $PROVEDORES; do sobe_no "$n"; done
     sleep 1

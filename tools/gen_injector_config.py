@@ -32,7 +32,7 @@ import sys
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cfg", required=True, help="diretório gerado por tools/gen_config.py")
-    ap.add_argument("--scenario", required=True, choices=["dos", "fuzzy"])
+    ap.add_argument("--scenario", required=True, choices=["dos", "mitm_single", "fuzzy"])
     ap.add_argument("--ip", required=True, help="unicast do injetor, fora das 9 ECUs")
     ap.add_argument("--out", required=True)
     ap.add_argument("--impersonate", default="node_10", help="ECU cuja configuração o dos copia")
@@ -58,11 +58,13 @@ def main():
         "service-discovery": copy.deepcopy(base["service-discovery"]),
     }
 
-    if a.scenario == "dos":
+    if a.scenario in ("dos", "mitm_single"):
         if not base.get("services"):
             sys.exit("ERRO: %s não oferece serviço; nada a personificar" % a.impersonate)
         cfg["services"] = copy.deepcopy(base["services"])
-        cfg["service-discovery"]["cyclic_offer_delay"] = str(a.cycle_ms if a.cycle_ms is not None else 20)
+        # Ritmos medidos no dataset (tools/offer_cadence.py): .11 a cada 20 ms, .13 a cada 10 ms.
+        padrao = 20 if a.scenario == "dos" else 10
+        cfg["service-discovery"]["cyclic_offer_delay"] = str(a.cycle_ms if a.cycle_ms is not None else padrao)
     else:
         servicos = []
         for svc in range(a.fuzz_first, a.fuzz_first + a.fuzz_count):

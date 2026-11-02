@@ -101,7 +101,12 @@ faz o dataset recusar CLU, PT e TEL), e a versão do vsomeip que reproduz o data
 passou a ser a padrão da bancada (a 3.6.4 recusa até a ADAS; e no benigno a 3.5.6 dá 99,1% de TCP,
 igual ao dataset). Revalidados na 3.5.6: `sd-smoke`, `bus-kim` e a suíte inteira.
 
-**A3–A4 (MITM single e multi):** falta o emissor de SD bruto para o `StopOffer` em nome da VDE.
+**A3 (MITM single): passou (02/11).** `StopOffer` em nome da VDE montado à mão
+(`src/nodes/SdRawEmitter.hpp`, igual byte a byte ao do dataset em `tests/test_sd_raw.cpp`), sinal falso
+do atacante do dataset reproduzido em ordem. Durante o sequestro, 69,0%/31,0% de UDP/TCP contra
+70,2%/29,8% do dataset; ADAS sequestrada, CLU/PT/TEL recusadas e quase sem dados da VDE, como no PCAP.
+
+**A4 (MITM multi):** falta. Dois atacantes e `StopOffer` com IP forjado por socket bruto.
 
 ## Fase B — Rodada única
 

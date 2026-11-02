@@ -56,8 +56,31 @@ Dois ajustes foram necessários para chegar aqui, e os dois são achados:
 | alguém assina ou conecta | não | não |
 | efeito no resto do barramento | nenhum | nenhum (todas as ECUs recebem normalmente) |
 
+## MITM single (injetor .13, ~3 s depois da VDE)
+
+O que captura a vítima é um `StopOfferService` em nome da VDE, que a pilha não manda: ele é montado
+em `src/nodes/SdRawEmitter.hpp` e conferido byte a byte contra o quadro do dataset
+(`tests/test_sd_raw.cpp`). O checksum UDP do quadro do dataset é a soma parcial do pseudo-cabeçalho
+(checksum offload visto na bridge): o atacante usou um socket UDP comum, do próprio IP, e o injetor
+faz o mesmo. O conteúdo publicado à ADAS é o sinal falso do próprio atacante do dataset (velocidade
+média de 14,7 m/s com o carro parado), extraído pelo MAC dele com `tools/extract_attacker_payloads.py`.
+
+| | dataset (`mitm_single_attacker`) | bancada |
+|---|---|---|
+| ofertas falsas de 0x1001 | 98/s, a cada 10 ms | 94/s, a cada 10 ms |
+| `StopOffer` em nome da VDE, à ADAS | a cada 2,5 s, do IP do atacante, flags 0xC0 | a cada 2,5 s, do IP do atacante, flags 0xC0 |
+| ADAS | assina e conecta no atacante | assina (5 354 Ack) e conecta no atacante |
+| CLU, PT, TEL | recusadas pelo atacante, reconectando na VDE (~6,4/s) | recusadas, reconectando na VDE (~8,7/s) |
+| sinal falso à ADAS | 93/s | 100/s |
+| CLU, PT, TEL recebendo da VDE | quase nada | quase nada (162 a 910 em 60 s) |
+| UDP / TCP **durante o sequestro** | 70,2% / 29,8% | 69,0% / 31,0% |
+
+No dataset o sequestro dura 565 dos 1 479 s da captura; fora dele o atacante só manda SD (80,8% UDP,
+0,3% TCP), e é isso que leva a proporção da captura inteira a 80,3%/19,7%. A comparação certa é
+dentro da janela.
+
 ## O que falta na fase A
 
-Os dois MITM. Além de anunciar 0x1001, eles mandam à ADAS um `StopOfferService` em nome da VDE (com
-o IP da VDE forjado, no MITM multi), e esse quadro não sai da API do vsomeip. Precisam de um emissor
-de Service Discovery bruto.
+O MITM multi: dois atacantes (.14 assina a VDE e repassa por 0x100B; .15 se passa pela VDE) e o
+`StopOffer` com o IP da VDE forjado, por socket bruto (`INJ_SO_MODE=raw`), que o emissor já suporta
+e o teste já confere contra o quadro do dataset.
