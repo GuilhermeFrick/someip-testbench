@@ -155,6 +155,41 @@ repetição consecutiva; esse é provavelmente o maior desvio de conteúdo delas
 **O resíduo é pequeno e localizado:** dos 108 eventos que sobram, **85 são Service Discovery**
 (`0xFFFF`). O que ainda difere não está no fluxo cíclico de notificações.
 
+### 2.7 🔴 DETECÇÃO MEDIDA: só o Fuzzy transfere
+
+A bancada media só falso positivo. Agora mede **detecção**: `tools/inject_scenarios.py`
+injeta as quatro famílias sobre a captura benigna, com assinaturas **medidas do
+dataset real** (serviço, transporte, densidade), e `score_pcap.cpp` pontua a cadeia
+congelada contra o ground truth por classe.
+
+| classe | recall **real** | recall **bancada** |
+|---|---:|---:|
+| DoS | 0,771 | **0,000** |
+| Fuzzy | 1,000 | **0,586** |
+| MITM-single | 0,986 | **0,010** |
+| MITM-multi | 0,979 | **0,032** |
+
+🟢 **Controle:** o mesmo scorer sobre os PCAPs reais reproduz o macro-F1 ≈ 0,96 da
+C1 — logo os números baixos são transferência genuína, não bug.
+
+**Só o Fuzzy transfere, e degrada.** Pelo mesmo motivo do §2.5/§2.6, agora no lado
+do ataque: o `content_ext` detecta os ataques do dataset pela **impressão de
+conteúdo** daquela captura, não pela estrutura do ataque. Fuzzy é a exceção porque
+sua assinatura É conteúdo aleatório — invariante ao domínio. DoS/MITM têm
+comportamento distinto, mas sua discriminação no dataset vinha de bytes incidentais;
+reproduzidos com o conteúdo da bancada, o sinal some.
+
+É o **espelho** do achado benigno. Juntos, uma afirmação forte e medida:
+
+> o `content_ext` está acoplado às distribuições de bytes do domínio de treino,
+> para tráfego benigno E de ataque. Um detector a macro-F1 0,96 no dataset detecta
+> 3 de 4 classes via artefato de conteúdo específico, não via estrutura
+> transferível.
+
+⚠️ Não prova que o detector é ruim — prova de onde vem sua discriminação. Um
+detector com features comportamentais/temporais poderia transferir melhor, e a
+bancada agora permite testar isso. Detalhe em `experiments/eval-pcap/DETECCAO.md`.
+
 ## 3. As descobertas, por ordem de importância
 
 ### 3.1 🔴 O dataset do Kim é a MESMA arquitetura da nossa bancada

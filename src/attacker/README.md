@@ -1,36 +1,31 @@
-# `attacker` — o nó atacante
+# Tráfego adversarial para avaliação de detecção
 
-Fase 2 do [plano](../../docs/PLANO.md). Um executável com **duas superfícies de
-ataque**, que não são intercambiáveis:
+⚠️ **O que está IMPLEMENTADO é a injeção pós-captura** (`tools/inject_scenarios.py`),
+não um nó vivo. A razão está em `experiments/eval-pcap/DETECCAO.md`: é o mesmo
+método dos dois baselines (Luo injeta por script CAPL; Kim publica PCAPs rotulados),
+é verificável sem subir o barramento, e roda sobre o substrato que importa — a
+reprodução em vsomeip real do barramento validado.
 
-| Superfície | Como age | Ataques |
-|---|---|---|
-| **via serviço** | usa a `libecu` como um nó legítimo, com a pilha vsomeip | MITM, spoof de Service Discovery |
-| **on-the-wire** | monta o quadro direto no socket, sem passar pela pilha | DoS, Fuzzy |
-
-A distinção importa. Um ataque *via serviço* produz pacotes bem formados, que a
-pilha aceita, e por isso é o caso difícil para o detector. Um ataque
-*on-the-wire* pode violar a serialização de propósito, e é o único jeito de gerar
-Fuzzy, porque a pilha não deixaria.
-
-## Cenários
-
-Em [`platform/scenarios/`](../../platform/scenarios/), em YAML, herdando a
-taxonomia e o `trigger_rate` do `someip-traffic-simulator`.
+As quatro famílias (DoS, Fuzzy, MITM de uma origem, MITM de várias) são reproduzidas
+com assinatura **medida do dataset real**: serviço, transporte, tipo, cadência e
+densidade de ataque. Isso corrigiu nosso próprio gerador de apoio
+(`someip-traffic-simulator`), que usava relay `0x100B` para todo MITM — no dataset
+só o *multi* usa relay; o *single* impersona o serviço legítimo.
 
 ## Ground truth
 
-A rotulagem é por **IP de origem mais timeline**, via `tools/label_pcap.py`. Por
-isso o endereço de cada nó é contrato na
-[matriz de comunicação](../../platform/comm_matrix.yaml), não configuração.
+Por **IP de origem**: o injetor usa um endereço fora do conjunto benigno, e toda
+frame dele leva a classe do cenário. É a regra do `extract.py` de referência
+(`src ∉ benign_ips`), a mesma que rotula o dataset. Sem heurística sobre o PCAP.
 
-## Risco conhecido
+## O resultado, em uma linha
 
-Viés sintético: ataque com padrão temporal perfeito demais fica trivial de
-detectar e o resultado não se transfere. Mitigação prevista no gerador: jitter e
-variação de taxa.
+Só o Fuzzy transfere para a bancada (recall 0,59); DoS e MITM colapsam (0–3%),
+contra 0,77–0,99 no dataset real. O detector detecta por conteúdo específico do
+domínio, não por estrutura de ataque. Ver `experiments/eval-pcap/DETECCAO.md`.
 
-## Critério de pronto
+## O nó vivo (superfície futura)
 
-O extrator `content_ext` consome o PCAP gerado **sem adaptação**, e o detector da
-primeira contribuição produz métricas por classe sobre ele.
+DoS e Fuzzy podem rodar como nó de socket cru (não precisam observar o barramento
+antes); MITM precisa observar-e-retransmitir. Fica como trabalho futuro — a injeção
+pós-captura já dá o número de detecção, que é o que faltava.
