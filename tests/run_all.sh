@@ -149,6 +149,16 @@ else
     echo "  PULADO: rode antes  python3 tools/gen_config.py --out build/cfg"
 fi
 
+# ------------------------------------- banco de payloads e filtro BPF
+# O banco alimenta os nos com bytes do barramento de referencia, e o filtro decide
+# o que chega a cadeia. Os dois mudam o QUE E MEDIDO, entao uma falha silenciosa
+# aqui falsifica o numero final em vez de quebrar a rodada.
+printf '
+######## test_payload_bank ########
+'
+ARGS=()
+roda test_payload_bank tests/test_payload_bank.cpp src/ids_sensor/PacketSource.cpp src/ids_sensor/IdsSensorErrorDomain.cpp -lpcap
+
 # -------------------------------------------- o plano do no generico
 # A tabela acima e conferida na ESTRUTURA. Este confere o que o no generico
 # DERIVA dela: quais eventos publicar, e em quais eventgroups assinar. Roda sem

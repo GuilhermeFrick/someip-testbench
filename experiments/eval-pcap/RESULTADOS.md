@@ -66,6 +66,69 @@ assinatura de `fuzzy`. O degrau 1 da escada do `DISCUSSAO.md` está medido, e o 
 **nenhuma das duas políticas sintéticas serve**: a bancada precisa de conteúdo com a estatística de
 sinal real, que é para o que a ancoragem no CARLA existe.
 
+## O diagnóstico: alimentar os nós com os bytes do próprio barramento
+
+As duas políticas sintéticas não respondem *quanto* do buraco é só conteúdo. A política `dataset`
+(`tools/extract_payloads.py` + `src/nodes/PayloadBank.hpp`) replica nos nós os bytes de payload da
+captura de referência, **na ordem em que foram capturados** — quatro das dezesseis features olham
+para o pacote anterior do fluxo, então sortear produziria um terceiro tráfego sintético.
+
+⚠️ É **circular como alegação de produto** e não diz que a bancada reproduz o barramento. É o
+**limite superior** do que a reprodução pode alcançar, e serve para decidir se vale ir atrás de
+conteúdo realista.
+
+### 🔴 A descoberta que a primeira rodada com `dataset` custou
+
+Os provedores "enviaram" 27 862 e os consumidores receberam **1 403**, sem um único erro em lugar
+nenhum. Causa: `notify()` do vsomeip tem `_force = false` por padrão, e **suprime a notificação de um
+field cujo payload não mudou** — e `notify()` devolve `void`, então o chamador não fica sabendo.
+
+Medido no barramento de referência: **99,3% a 99,6%** das notificações consecutivas de `Service1001`
+e `Service1002` carregam **bytes idênticos** (72% em `Service1003`) — e mesmo assim aparecem na
+captura, na cadência cheia. O barramento de referência **publica o valor repetido**. Suprimir seria
+reproduzir outra coisa, então o `NodeRuntime::Send` passou a usar `_force = true`.
+
+Isso também diz algo sobre as políticas sintéticas: `counter` e `random` têm **0%** de repetição
+consecutiva, e o barramento real tem 99%. Esse é provavelmente o maior desvio de conteúdo das duas.
+
+### O resultado com conteúdo real
+
+| conteúdo | artefatos | filtro | falso positivo | × referência |
+|---|---|---|---:|---:|
+| — (dataset) | do treino | — | **0,0272%** | 1× |
+| `counter` | do treino | — | 9,42% | 346× |
+| `counter` | limites recalibrados | — | 4,11% | 151× |
+| `counter` | limites e bytes | — | 25,29% | 930× |
+| `random` | do treino | — | 44,50% | 1636× |
+| **`dataset`** | do treino | — | **0,3641%** | **13,4×** |
+| **`dataset`** | limites recalibrados | — | **0,1885%** | **6,9×** |
+| **`dataset`** | limites **e** bytes | — | **0,1081%** | **4,0×** |
+| **`dataset`** | limites e bytes | sem o gateway | **0,0998%** | **3,7×** |
+
+**1. O conteúdo responde por 26× do buraco.** Trocar `counter` pelos bytes do barramento de
+referência leva o falso positivo de 9,42% para 0,3641%, com tudo o mais igual. A hipótese estava
+certa e agora tem tamanho.
+
+**2. Com conteúdo realista, a calibração por domínio funciona como anunciada — e os modelos de bytes
+voltam a AJUDAR:** 0,3641% → 0,1885% (limites) → 0,1081% (limites e bytes). Isto **inverte** a
+leitura 2 da seção anterior, e o motivo é claro: recalibrar um modelo de conteúdo sobre conteúdo
+degenerado produz um modelo degenerado; sobre conteúdo real, produz um modelo útil.
+
+**3. O resíduo é pequeno e localizado.** Dos 108 eventos que sobram com filtro, **85 são do serviço
+`0xFFFF`** — Service Discovery. Dos demais, 14 em `0x1003` e 8 em `0x1001`. A diferença que resta não
+está no fluxo cíclico de notificações, está no SD.
+
+## O que isto resolve, e o que fica
+
+**Resolvido:** a bancada não tem diferença estrutural escondida. Com o conteúdo do próprio
+barramento, o detector congelado chega a **3,7×** a referência, e a cadeia de calibração que a
+contribuição promete reduz o falso positivo por um fator de 3,4.
+
+**Fica:** o conteúdo precisa vir de algum lugar que não seja o dataset, senão é circular. É para isso
+que a ancoragem no CARLA existe, e agora ela tem uma meta numérica: **sair dos 9,42% do `counter` em
+direção aos 0,36% do conteúdo real.** O alvo não é mais "funcionar", é um número entre dois outros
+já medidos.
+
 ### Uma consistência que vale notar
 
 No dataset, 481 dos 597 falsos positivos vêm de `172.18.0.10`, o provedor de `0x1001`. Na bancada,

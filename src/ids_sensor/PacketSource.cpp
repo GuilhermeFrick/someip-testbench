@@ -138,7 +138,60 @@ struct PcapSource::Impl
     Impl &operator=(const Impl &) = delete; ///< Owns a handle, so it is not assignable.
 };
 
-ara::core::Result<std::unique_ptr<PcapSource>> PcapSource::Create(const std::string &path)
+namespace
+{
+
+/**
+ * @brief Compile and install a BPF filter on an already opened handle.
+ * @param[in,out] handle Opened pcap handle.
+ * @param[in]     filter BPF expression; an empty one installs nothing and succeeds.
+ * @return Nothing on success, or an error.
+ * @retval ::ids::IdsSensorErrc::InvalidConfiguration The expression did not compile, or could not
+ *                                                   be installed on the handle.
+ * @details The netmask is PCAP_NETMASK_UNKNOWN on purpose. It is only consulted for the @c broadcast
+ *          primitive, which none of the bench filters use, and asking the interface for it would
+ *          make an offline handle fail for no reason.
+ */
+ara::core::Result<void> InstalaFiltro(pcap_t *handle, const std::string &filter)
+{
+    using Res = ara::core::Result<void>;
+
+    if (filter.empty())
+    {
+        return Res::FromValue();
+    }
+    else
+    {
+        /* Something to install. */
+    }
+
+    bpf_program programa;
+    if (pcap_compile(handle, &programa, filter.c_str(), kEnabled, PCAP_NETMASK_UNKNOWN) != 0)
+    {
+        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::InvalidConfiguration));
+    }
+    else
+    {
+        /* Compiled. */
+    }
+
+    const int instalado = pcap_setfilter(handle, &programa);
+    /* The program is freed either way: pcap_setfilter copies what it needs. */
+    pcap_freecode(&programa);
+    if (instalado != 0)
+    {
+        return Res::FromError(ara::core::ErrorCode(IdsSensorErrc::InvalidConfiguration));
+    }
+    else
+    {
+        /* Installed. */
+    }
+    return Res::FromValue();
+}
+
+} // namespace
+
+ara::core::Result<std::unique_ptr<PcapSource>> PcapSource::Create(const std::string &path, const std::string &filter)
 {
     using Res = ara::core::Result<std::unique_ptr<PcapSource>>;
 
@@ -164,6 +217,16 @@ ara::core::Result<std::unique_ptr<PcapSource>> PcapSource::Create(const std::str
     else
     {
         /* Ethernet, which is what ::ids::SomeipParser decodes. */
+    }
+
+    const ara::core::Result<void> filtrado = InstalaFiltro(handle, filter);
+    if (!filtrado.HasValue())
+    {
+        return Res::FromError(filtrado.Error());
+    }
+    else
+    {
+        /* No filter, or one that compiled and was installed. */
     }
 
     return Res::FromValue(std::unique_ptr<PcapSource>(new PcapSource(std::move(impl))));
@@ -252,7 +315,7 @@ struct LiveSource::Impl
     Impl &operator=(const Impl &) = delete; ///< Owns a handle, so it is not assignable.
 };
 
-ara::core::Result<std::unique_ptr<LiveSource>> LiveSource::Create(const std::string &iface)
+ara::core::Result<std::unique_ptr<LiveSource>> LiveSource::Create(const std::string &iface, const std::string &filter)
 {
     using Res = ara::core::Result<std::unique_ptr<LiveSource>>;
 
@@ -307,6 +370,19 @@ ara::core::Result<std::unique_ptr<LiveSource>> LiveSource::Create(const std::str
     else
     {
         /* Ethernet, which is what ::ids::SomeipParser decodes. */
+    }
+
+    /* O filtro entra DEPOIS do activate, que e quando o handle tem link-layer e o
+     * pcap_compile pode conferir a expressao contra ele. Antes disso uma expressao
+     * valida para Ethernet seria recusada. */
+    const ara::core::Result<void> filtrado = InstalaFiltro(handle, filter);
+    if (!filtrado.HasValue())
+    {
+        return Res::FromError(filtrado.Error());
+    }
+    else
+    {
+        /* No filter, or one that compiled and was installed. */
     }
 
     return Res::FromValue(std::unique_ptr<LiveSource>(new LiveSource(std::move(impl))));

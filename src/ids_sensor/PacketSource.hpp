@@ -62,15 +62,17 @@ class PcapSource final : public IPacketSource
   public:
     /**
      * @brief Open a capture file for replay.
-     * @param[in] path Path to the PCAP file.
+     * @param[in] path   Path to the PCAP file.
+     * @param[in] filter BPF expression restricting what is replayed; empty replays everything.
      * @return The opened source, or an error describing why it could not be opened.
+     * @retval ::ids::IdsSensorErrc::InvalidConfiguration @p filter is not a valid BPF expression.
      * @retval ::ids::IdsSensorErrc::ArtefactNotFound   No file exists at @p path.
      * @retval ::ids::IdsSensorErrc::ArtefactUnreadable The file exists but could not be opened;
      *                                                 the support data carries the platform errno.
      * @retval ::ids::IdsSensorErrc::ArtefactCorrupted  The file is not a capture this build can read.
      * @details Returns a smart pointer, per section 8.2 of the C++ code standard.
      */
-    static ara::core::Result<std::unique_ptr<PcapSource>> Create(const std::string &path);
+    static ara::core::Result<std::unique_ptr<PcapSource>> Create(const std::string &path, const std::string &filter = std::string());
 
     /**
      * @brief Close the capture file and release the reader.
@@ -117,18 +119,26 @@ class LiveSource final : public IPacketSource
   public:
     /**
      * @brief Start capturing on an interface.
-     * @param[in] iface Name of the interface to capture from.
+     * @param[in] iface  Name of the interface to capture from.
+     * @param[in] filter BPF expression restricting what is captured; empty captures everything.
      * @return The started source, or an error describing why capture could not start.
-     * @retval ::ids::IdsSensorErrc::ArtefactNotFound   No such interface.
-     * @retval ::ids::IdsSensorErrc::ArtefactUnreadable Capture could not be started, typically for
-     *                                                 want of privileges; the support data carries
-     *                                                 the platform errno.
+     * @retval ::ids::IdsSensorErrc::ArtefactNotFound      No such interface.
+     * @retval ::ids::IdsSensorErrc::ArtefactUnreadable    Capture could not be started, typically for
+     *                                                    want of privileges; the support data carries
+     *                                                    the platform errno.
+     * @retval ::ids::IdsSensorErrc::InvalidConfiguration  @p filter is not a valid BPF expression.
+     * @warning A filter is part of the MEASUREMENT, not a convenience. What it drops never reaches
+     *          the flow state, so two runs with different filters are not comparable and the filter
+     *          belongs in whatever reports the result. It exists because a bench node sees
+     *          infrastructure traffic the reference bus did not have -- on the reproduced bus the
+     *          Docker gateway alone raised tens of events under service @c 0x0000, which is not
+     *          SOME/IP at all.
      * @warning The capturing process must have joined the relevant IGMP groups, otherwise the
      *          Docker bridge does not deliver the Service Discovery multicast, and this source
      *          returns an empty Optional on the first call with no error to show for it. See
      *          platform/sd-smoke/README.md.
      */
-    static ara::core::Result<std::unique_ptr<LiveSource>> Create(const std::string &iface);
+    static ara::core::Result<std::unique_ptr<LiveSource>> Create(const std::string &iface, const std::string &filter = std::string());
 
     /**
      * @brief Stop capturing and release the handle.

@@ -52,6 +52,7 @@
 
 #include "src/libecu/NodeRuntime.hpp"
 #include "src/nodes/MatrixPlan.hpp"
+#include "src/nodes/PayloadBank.hpp"
 
 namespace
 {
@@ -83,7 +84,8 @@ enum class PayloadPolicy
 {
     Counter,  ///< Big-endian sequence counter, then zeros. Deterministic and easy to find in a capture.
     Random,   ///< Pseudo-random bytes, seeded per event so a run repeats.
-    Constant  ///< The same byte everywhere.
+    Constant, ///< The same byte everywhere.
+    Dataset   ///< Bytes replayed, IN ORDER, from a reference capture. See ::ids::nodes::PayloadBank.
 };
 
 /**
@@ -136,6 +138,10 @@ PayloadPolicy PoliticaDe(const std::string &text)
     {
         p = PayloadPolicy::Constant;
     }
+    else if (text == "dataset")
+    {
+        p = PayloadPolicy::Dataset;
+    }
     else
     {
         /* Counter, which is also what an unknown name falls back to. */
@@ -153,6 +159,7 @@ struct Publicacao
     std::chrono::microseconds             period{0};    ///< Cadence, from the plan.
     std::uint32_t                         counter = 0U; ///< Sequence number put at the front of the payload.
     std::mt19937                          rng;          ///< Generator of the @c random policy, seeded per event.
+    ids::nodes::PayloadStream            *banco   = nullptr; ///< Stream of the @c dataset policy; null for the others.
     std::uint64_t                         sent    = 0U; ///< How many notifications went out.
 };
 
@@ -164,6 +171,20 @@ struct Publicacao
  */
 std::vector<std::uint8_t> MontaPayload(PayloadPolicy policy, Publicacao &pub)
 {
+    if ((policy == PayloadPolicy::Dataset) && (pub.banco != nullptr))
+    {
+        /* Em ordem de captura, e dando a volta no fim: quatro das dezesseis
+         * features olham para o pacote ANTERIOR do fluxo, entao sortear quebraria
+         * justamente a estrutura que se quer reproduzir. */
+        const ids::ecu::ByteView amostra = pub.banco->Next();
+        ++pub.counter;
+        return std::vector<std::uint8_t>(amostra.data(), amostra.data() + amostra.size());
+    }
+    else
+    {
+        /* One of the synthetic policies. */
+    }
+
     std::vector<std::uint8_t> bytes(pub.plan.bytes, 0U);
 
     if (policy == PayloadPolicy::Random)
@@ -279,12 +300,36 @@ int main()
 
     const std::string   politicaNome = Env("ECU_PAYLOAD", "counter");
     const PayloadPolicy politica     = PoliticaDe(politicaNome);
+    const std::string   arquivoBanco = Env("ECU_PAYLOAD_FILE", "build/cfg/payloads.bin");
     const std::uint32_t runSegs      = EnvNumber("ECU_RUN_SECONDS", 0U);
     const std::uint32_t prontoMs     = EnvNumber("ECU_READY_TIMEOUT_MS", kDefaultReadyMs);
     const std::uint32_t reportSegs   = EnvNumber("ECU_REPORT_SECONDS", kDefaultReportS);
 
     std::printf("[%s] app \"%s\", ip %s, publica %zu evento(s), assina %zu servico(s), payload %s\n", plano.node->name,
                 plano.node->appName, plano.node->ip, plano.publishes.size(), plano.consumes.size(), politicaNome.c_str());
+
+    /* O banco de payloads e carregado ANTES de subir a pilha, e um problema nele e
+     * fatal. Seguir com os bytes sinteticos depois de pedir `dataset` produziria
+     * uma rodada que parece a pedida e mede outra coisa -- que e o tipo de falha
+     * silenciosa que esta bancada ja pagou caro. */
+    ids::nodes::PayloadBank banco;
+    if (politica == PayloadPolicy::Dataset)
+    {
+        banco = ids::nodes::PayloadBank::FromFile(arquivoBanco);
+        if (!banco.Problem().empty())
+        {
+            std::printf("[%s] ERRO no banco de payloads: %s\n", plano.node->name, banco.Problem().c_str());
+            return 2;
+        }
+        else
+        {
+            std::printf("[%s] banco de payloads: %zu fluxo(s) de %s\n", plano.node->name, banco.Count(), arquivoBanco.c_str());
+        }
+    }
+    else
+    {
+        /* The synthetic policies need no bank. */
+    }
 
     ara::core::Result<std::unique_ptr<ids::ecu::NodeRuntime>> criado = ids::ecu::NodeRuntime::Create(plano.node->appName);
     if (!criado.HasValue())
@@ -358,6 +403,36 @@ int main()
         /* Seeded from the identifiers, so two runs of the same node produce the same bytes and two
          * different events never produce the same stream. */
         pub.rng.seed(static_cast<std::uint32_t>((static_cast<std::uint32_t>(ep.service) << 16U) | ep.notifier));
+
+        if (politica == PayloadPolicy::Dataset)
+        {
+            pub.banco = banco.Find(ep.service, ep.notifier);
+            if (pub.banco == nullptr)
+            {
+                std::printf("[%s] ERRO: o banco nao tem o evento 0x%04X/0x%04X\n", plano.node->name,
+                            static_cast<unsigned>(ep.service), static_cast<unsigned>(ep.notifier));
+                return 2;
+            }
+            else if (pub.banco->SampleSize() != ep.bytes)
+            {
+                /* Banco e matriz discordando sobre o tamanho significa que vieram de
+                 * capturas diferentes. Publicar assim mudaria o tamanho do payload
+                 * sem ninguem notar, e tamanho e uma das coisas que a reproducao
+                 * promete acertar. */
+                std::printf("[%s] ERRO: evento 0x%04X/0x%04X tem %zu B no banco e %zu B na matriz\n", plano.node->name,
+                            static_cast<unsigned>(ep.service), static_cast<unsigned>(ep.notifier), pub.banco->SampleSize(), ep.bytes);
+                return 2;
+            }
+            else
+            {
+                /* Stream found and consistent with the matrix. */
+            }
+        }
+        else
+        {
+            /* No bank for the synthetic policies. */
+        }
+
         publicacoes.push_back(pub);
 
         std::printf("[%s]   publica %s 0x%04X, %zu B cada %u ms, %zu eventgroup(s), %s\n", plano.node->name, ep.serviceName.c_str(),

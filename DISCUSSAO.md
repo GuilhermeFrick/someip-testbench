@@ -126,6 +126,35 @@ estrutura transferiu; o conteúdo não.
 
 Detalhe completo, ressalvas e receita de reprodução em `experiments/eval-pcap/RESULTADOS.md`.
 
+### 2.6 🟢 O DIAGNÓSTICO FECHOU: o conteúdo responde por 26× do buraco
+
+Alimentando os nós com os bytes de payload do próprio barramento de referência (política
+`ECU_PAYLOAD=dataset`), calibrando numa rodada e medindo em outra:
+
+| conteúdo | artefatos | falso positivo | × referência |
+|---|---|---:|---:|
+| — (dataset) | do treino | **0,0272%** | 1× |
+| `counter` | do treino | 9,42% | 346× |
+| **`dataset`** | do treino | **0,3641%** | **13,4×** |
+| **`dataset`** | limites recalibrados | **0,1885%** | 6,9× |
+| **`dataset`** | limites **e** bytes | **0,1081%** | **4,0×** |
+| **`dataset`** | idem, sem o gateway do Docker | **0,0998%** | **3,7×** |
+
+**A bancada não tem diferença estrutural escondida.** Trocando só o conteúdo, o falso positivo cai
+26×. E com conteúdo realista a calibração por domínio funciona como anunciada — **os modelos de bytes
+voltam a ajudar** (0,1885% → 0,1081%), o que **inverte** a leitura da §2.5: recalibrar um modelo de
+conteúdo sobre conteúdo degenerado produz modelo degenerado; sobre conteúdo real, produz modelo útil.
+
+🔴 **E custou uma descoberta sobre o barramento de referência:** `notify()` do vsomeip tem
+`_force = false` por padrão e **suprime a notificação de um field cujo payload não mudou**, sem avisar
+(devolve `void`). No dataset, **99,3% a 99,6%** das notificações consecutivas de `Service1001` e
+`Service1002` carregam **bytes idênticos** (72% em `Service1003`) — e aparecem na captura mesmo assim.
+O barramento de referência publica o valor repetido. As duas políticas sintéticas têm **0%** de
+repetição consecutiva; esse é provavelmente o maior desvio de conteúdo delas.
+
+**O resíduo é pequeno e localizado:** dos 108 eventos que sobram, **85 são Service Discovery**
+(`0xFFFF`). O que ainda difere não está no fluxo cíclico de notificações.
+
 ## 3. As descobertas, por ordem de importância
 
 ### 3.1 🔴 O dataset do Kim é a MESMA arquitetura da nossa bancada
@@ -301,4 +330,7 @@ diferentes.
    ancoragem no CARLA — que era a Fase 1 e agora tem justificativa medida, não suposta.
 3. **Reproduzir o macro-F1 (0,9689)** com a cadeia em C++ sobre o dataset, fechando a
    verificação ponta a ponta — hoje as peças estão verificadas, o número final não.
-4. Subir a escada, um degrau por vez, medindo falso positivo em cada um.
+4. **Fechar o resíduo do Service Discovery.** Com conteúdo real, 85 dos 108 falsos positivos
+   restantes são do serviço `0xFFFF`. É o alvo mais barato que sobrou, e está isolado.
+5. Subir a escada, um degrau por vez, medindo falso positivo em cada um. **O alvo do CARLA agora é
+   numérico:** sair dos 9,42% do `counter` em direção aos 0,36% do conteúdo real.

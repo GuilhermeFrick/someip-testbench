@@ -191,12 +191,20 @@ int main()
     static_cast<void>(std::setvbuf(stdout, nullptr, _IOLBF, 0));
 
     const std::string iface     = Env("IDS_INTERFACE", "eth0");
+    /* Empty by default: a filter is part of the measurement, so it is never applied
+     * without someone asking. On a bench bus "ip and (tcp or udp)" already drops the
+     * infrastructure chatter that the reference bus did not have. */
+    const std::string filtro    = Env("IDS_FILTER", "");
     const std::string ipLocal   = Env("IDS_LOCAL_IP", mtx::IdsSensor::Ip());
     const std::string dirCfg    = Env("IDS_ARTEFACTS", "build/cfg");
     const std::string prefixo   = Env("IDS_EVENT_PREFIX", "ids_sensor/SecurityEvents");
 
     std::printf("[ids_sensor] interface %s, address %s, artefacts in %s\n", iface.c_str(), ipLocal.c_str(),
                 dirCfg.c_str());
+    /* The filter is part of the MEASUREMENT: what it drops never reaches the flow
+     * state, so two runs with different filters are not comparable. It is printed
+     * next to the result rather than only read from the environment. */
+    std::printf("[ids_sensor] filter %s\n", filtro.empty() ? "(none: everything on the wire)" : filtro.c_str());
 
     /* ------------------------------------------------- 1. join the groups */
     /* BEFORE capturing. A membership taken afterwards would miss whatever the
@@ -286,7 +294,7 @@ int main()
     }
 
     /* ------------------------------------------------------ 3. the capture */
-    ara::core::Result<std::unique_ptr<ids::LiveSource>> fonte = ids::LiveSource::Create(iface);
+    ara::core::Result<std::unique_ptr<ids::LiveSource>> fonte = ids::LiveSource::Create(iface, filtro);
     if (!fonte.HasValue())
     {
         std::printf("[ids_sensor] ERROR capture on %s: %s\n", iface.c_str(), fonte.Error().Message());

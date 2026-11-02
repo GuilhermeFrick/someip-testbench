@@ -199,11 +199,17 @@ int main(int argc, char **argv)
     const std::string pcap = argv[1];
     const std::string dir  = argv[2];
     std::string       motorPedido = "auto";
+    std::string       filtro      = "";
     for (int i = 3; i < argc; ++i)
     {
         if ((std::strcmp(argv[i], "--engine") == 0) && ((i + 1) < argc))
         {
             motorPedido = argv[i + 1];
+            ++i;
+        }
+        else if ((std::strcmp(argv[i], "--filter") == 0) && ((i + 1) < argc))
+        {
+            filtro = argv[i + 1];
             ++i;
         }
         else
@@ -295,7 +301,7 @@ int main(int argc, char **argv)
         /* Extractor ready. */
     }
 
-    ara::core::Result<std::unique_ptr<ids::PcapSource>> fonte = ids::PcapSource::Create(pcap);
+    ara::core::Result<std::unique_ptr<ids::PcapSource>> fonte = ids::PcapSource::Create(pcap, filtro);
     if (!fonte.HasValue())
     {
         std::printf("ERRO abrindo %s: %s\n", pcap.c_str(), fonte.Error().Message());

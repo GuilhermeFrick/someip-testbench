@@ -703,7 +703,19 @@ ara::core::Result<void> NodeRuntime::Send(ServiceId service, InstanceId instance
 
     const std::shared_ptr<vsomeip::payload> p = vsomeip::runtime::get()->create_payload();
     p->set_data(payload.data(), static_cast<vsomeip::length_t>(payload.size()));
-    m_impl->app->notify(service, instance, static_cast<vsomeip::event_t>(notifier), p);
+    /* _force = true, e NAO e detalhe. Com o padrao (false) o vsomeip SUPRIME a
+     * notificacao de um field cujo payload nao mudou, e o chamador nao fica
+     * sabendo: notify() devolve void. Medido no barramento de referencia, 99,3%
+     * a 99,6% das notificacoes consecutivas de Service1001 e Service1002 carregam
+     * bytes IDENTICOS (72% em Service1003) -- e mesmo assim elas aparecem na
+     * captura, na cadencia cheia. Ou seja: o barramento de referencia publica o
+     * valor repetido, e suprimir seria reproduzir outra coisa.
+     *
+     * A primeira rodada com payload do dataset custou esta descoberta: os
+     * provedores "enviaram" 27 862 e os consumidores receberam 1 403, sem um
+     * unico erro em lugar nenhum. Sem o force, o contador de enviados conta
+     * TENTATIVAS, nao mensagens. */
+    m_impl->app->notify(service, instance, static_cast<vsomeip::event_t>(notifier), p, true);
     return Res::FromValue();
 }
 
