@@ -120,3 +120,37 @@ pelo MAC; modelos de bytes no PCAP benigno inteiro, como a C1.
 3. **O dilema:** dentro do domínio as 16 features vencem; fora dele só as 5 se sustentam, mas detectam
    pouco o MITM multi (0,25) e medianamente o DoS (0,60 a 0,75). É o buraco que as features de SD
    (`sd_features.py`) foram desenhadas para cobrir.
+
+## Features de SD e pesos por classe (`sd_features.py`, `ablate_sd.py`)
+
+Cinco features de comportamento de Service Discovery, sem valor de payload de aplicação, cada uma
+mirando um mecanismo medido nos ataques: `sd_offer_rate_src` (ofertas por segundo da origem),
+`svc_provider_count` (origens que ofereceram o serviço em 10 s), `sd_stopoffer_unicast`,
+`sd_endpoint_mismatch` (endpoint anunciado diferente do IP de origem) e `ip_mac_conflict`.
+
+**Treino no Kim, 5 sem conteúdo + 5 de SD, sem pesos** (`train_kim.py --sd`):
+
+| teste | FP | DoS | Fuzzy | MITM single | MITM multi |
+|---|---:|---:|---:|---:|---:|
+| Kim | 0,55% | 1,00 | 1,00 | 1,00 | 0,54 |
+| **bancada (outro domínio)** | **0,10%** | **1,00** | **1,00** | **0,99** | 0,47 |
+| carro andando | 0,19% | | | | |
+
+**Treino na bancada, o mesmo conjunto, sem pesos: quebrou** (19% de FP dentro do domínio). A ablação
+(features extraídas uma vez, em cache) achou a causa: `sd_offer_rate_src` com o Fuzzy raríssimo no
+treino (435 pacotes contra 880 mil normais). As árvores criam regiões espúrias de Fuzzy que pegam
+pacotes comuns das consumidoras (TEL, ADAS), 87% deles com taxa de ofertas zero. A C1 não ponderava as
+classes; com pesos pelo inverso da frequência (`--pesos`):
+
+| treino e teste na bancada | FP | DoS | Fuzzy | MITM single | MITM multi |
+|---|---:|---:|---:|---:|---:|
+| 5 sem conteúdo | 0,31% | 0,85 | 0,85 | 0,68 | 0,76 |
+| 5 + `svc_provider_count` | 1,0% | 0,85 | 0,85 | 0,96 | 0,77 |
+| 5 + todas de SD, sem pesos | 19,3% | 0,35 | 0,12 | 0,98 | 0,27 |
+| 5 sem conteúdo, pesos^0,5 | 5,1% | 0,99 | 1,00 | 0,94 | 0,79 |
+| **5 + todas de SD, pesos^0,5** | **0,40%** | **1,00** | **1,00** | **0,99** | **0,87** |
+| 5 + todas de SD, pesos^1 | 1,1% | 1,00 | 1,00 | 0,99 | 0,88 |
+
+**Leitura.** Features de SD e pesos se completam: os pesos sozinhos detectam mais à custa de falso
+positivo, as features de SD sozinhas desestabilizam o Fuzzy, e juntas dão 0,40% de FP com 0,99 a 1,00
+em três famílias e 0,87 no MITM multi, dentro do domínio da bancada.

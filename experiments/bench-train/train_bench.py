@@ -123,7 +123,20 @@ def normaliza(X, mm):
     return ((X - xmin) / rng).astype(np.float32)
 
 
-def treina(Xn, y, params):
+def pesos_por_classe(y, potencia=0.5):
+    """Peso de cada amostra pelo inverso da frequência da sua classe, elevado a `potencia`.
+
+    A C1 não ponderava. Na bancada o Fuzzy tem 435 pacotes contra 880 mil normais, e com
+    tão poucos exemplos acrescentar uma feature muda como as árvores separam a classe: o
+    modelo cria regiões espúrias de Fuzzy que capturam tráfego benigno (ablate_sd.py).
+    potencia=0.5 (raiz) amortece o peso para não inverter o problema.
+    """
+    cont = np.bincount(y, minlength=len(CLASSES)).astype(np.float64)
+    w = np.where(cont > 0, (cont.sum() / (len(CLASSES) * np.maximum(cont, 1.0))) ** potencia, 0.0)
+    return w[y]
+
+
+def treina(Xn, y, params, pesos=None):
     """XGBoost pela API nativa, com os hiperparâmetros de pipeline.model_params().
 
     A imagem da paridade não tem scikit-learn, que o XGBClassifier exige. A tradução
@@ -135,7 +148,7 @@ def treina(Xn, y, params):
     rodadas = p.pop("n_estimators")
     p["eta"] = p.pop("learning_rate")
     p["nthread"] = p.pop("n_jobs")
-    return xgb.train(p, xgb.DMatrix(Xn, label=y), num_boost_round=rodadas)
+    return xgb.train(p, xgb.DMatrix(Xn, label=y, weight=pesos), num_boost_round=rodadas)
 
 
 def prediz(booster, Xn):
@@ -184,6 +197,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-jobs", type=int, default=4)
     ap.add_argument("--sd", action="store_true", help="acrescenta as 5 features de SD (sd_features.py)")
+    ap.add_argument("--pesos", type=float, default=None,
+                    help="pesos por classe, inverso da frequência elevado a este expoente (0.5 = raiz)")
     ap.add_argument("--features", default="",
                     help="features do modelo da bancada, por nome e separadas por vírgula; vazio = as 16")
     a = ap.parse_args()
@@ -219,7 +234,8 @@ def main():
     Xtr = Xtr[:, cols]
     mm_banc = (Xtr.min(0), Xtr.max(0))
     print("    %d quadros de treino: %s" % (len(ytr), dict(zip(CLASSES, np.bincount(ytr, minlength=5).tolist()))))
-    clf_banc = treina(normaliza(Xtr, mm_banc), ytr, pipeline.model_params(n_jobs=a.n_jobs))
+    clf_banc = treina(normaliza(Xtr, mm_banc), ytr, pipeline.model_params(n_jobs=a.n_jobs),
+                      pesos_por_classe(ytr, a.pesos) if a.pesos is not None else None)
     clf_banc.save_model(os.path.join(a.out, "model_16.json"))
     np.savez_compressed(os.path.join(a.out, "bytemodels.npz"),
                         someip=bm_banc["someip"].logP, sd=bm_banc["sd"].logP, l4=bm_banc["l4"].logP)

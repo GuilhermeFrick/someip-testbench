@@ -43,6 +43,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-jobs", type=int, default=4)
     ap.add_argument("--sd", action="store_true", help="treina também 5 sem conteúdo + 5 de SD")
+    ap.add_argument("--pesos", type=float, default=None,
+                    help="pesos por classe, inverso da frequência elevado a este expoente (0.5 = raiz)")
     a = ap.parse_args()
 
     sys.path.insert(0, os.path.join(a.repro, "src"))
@@ -85,7 +87,8 @@ def main():
         variantes.append(("sem_conteudo_mais_sd", [nomes.index(n) for n in SEM_CONTEUDO + tb.SD_NOMES]))
     for nome, cols in variantes:
         mm = (Xtr[:, cols].min(0), Xtr[:, cols].max(0))
-        clf = tb.treina(tb.normaliza(Xtr[:, cols], mm), ytr, pipeline.model_params(n_jobs=a.n_jobs))
+        clf = tb.treina(tb.normaliza(Xtr[:, cols], mm), ytr, pipeline.model_params(n_jobs=a.n_jobs),
+                        tb.pesos_por_classe(ytr, a.pesos) if a.pesos is not None else None)
         d = os.path.join(a.out, nome)
         os.makedirs(d, exist_ok=True)
         clf.save_model(os.path.join(d, "model_16.json"))
