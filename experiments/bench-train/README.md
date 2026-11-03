@@ -154,3 +154,29 @@ classes; com pesos pelo inverso da frequência (`--pesos`):
 **Leitura.** Features de SD e pesos se completam: os pesos sozinhos detectam mais à custa de falso
 positivo, as features de SD sozinhas desestabilizam o Fuzzy, e juntas dão 0,40% de FP com 0,99 a 1,00
 em três famílias e 0,87 no MITM multi, dentro do domínio da bancada.
+
+## A receita completa nos dois sentidos
+
+| modelo | FP no domínio | FP no outro domínio | FP carro andando | MITM multi (domínio / outro) | DoS / Fuzzy / MITM single no outro domínio |
+|---|---:|---:|---:|---:|---|
+| C1 original (Kim, 16, rótulo por IP) | 1,4% | 6,4% | 13,8% | 0,71 / 0,02 | 0,99 / 1,00 / 0,82 |
+| C1 com rótulo por MAC (Kim, 16) | 0,86% | 5,4% | 0,65% | 0,99 / 0,01 | 0,95 / 1,00 / 0,85 |
+| Kim, 5 sem conteúdo + 5 de SD | 0,55% | **0,10%** | 0,19% | 0,54 / 0,47 | **1,00 / 1,00 / 0,99** |
+| bancada, 5 + 5 de SD, pesos^0,5 | 0,40% | **2,3%** | 0,15% | **0,87** / 0,40 | **1,00 / 1,00 / 1,00** |
+| Kim, 5 + 5 de SD, pesos^0,5 | 1,7% | 3,0% | 5,9% | 0,66 / 0,47 | 1,00 / 1,00 / 0,99 |
+
+**Leitura.**
+
+1. **A receita sem conteúdo + SD funciona dentro e fora do domínio** para DoS, Fuzzy e MITM single
+   (recall ~1,00, falso positivo de 0,1% a 2,3%, e 0,15% a 0,19% com conteúdo novo), nos dois sentidos.
+2. **Os pesos por classe dependem dos dados**: resolvem o treino na bancada (Fuzzy com 435 pacotes) e
+   pioram o treino no Kim (de 0,10% para 3,0% de FP na bancada). Têm de ser escolhidos por validação
+   dentro do treino, como a C1 fez com os hiperparâmetros, e não fixados.
+3. **O MITM multi fora do domínio fica em 0,4 a 0,5.** Parte é teto de rótulo: 43% dos pacotes do
+   atacante do MITM multi são ACKs TCP sem payload (composição medida em `platform/scenario-live`),
+   indistinguíveis de um ACK normal.
+
+**O que falta antes de chamar o modelo de pronto:** escolher pesos e hiperparâmetros por validação
+aninhada; medir a variância com mais de uma rodada por cenário; reportar as métricas também só sobre
+os pacotes que um IDS pode distinguir (SOME/IP e SD), separando o teto de rótulo dos ACKs; e levar o
+modelo ao sensor em C++, que hoje calcula as 16 features e não as de SD.
